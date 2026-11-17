@@ -13,6 +13,9 @@ const MODES = new Set(['full', 'recall', 'drift', 'latency']);
 const QA_TOKEN_REFRESH_MS = 9 * 60 * 1000;
 const QA_MAX_CONSECUTIVE_FAILURES = 3;
 const QA_LOG_MAX_BYTES = 64 * 1024 * 1024;
+const QA_EVAL_CLIENT_PREFIX = 'eval-';
+const QA_CONVERSATION_PAGE_LIMIT = 50;
+const QA_CONVERSATION_MAX_PAGES = 10;
 const DOCKER_BIN_CANDIDATES = [
   process.env.DOCKER_BIN,
   'docker',
@@ -133,7 +136,7 @@ function abortCheck(signal) {
   if (signal?.aborted) throw new Error('评测已取消');
 }
 
-async function postJson(url, payload, headers, signal, { step = '上游请求' } = {}) {
+async function requestJson(method, url, payload, headers, signal, { step = '上游请求' } = {}) {
   abortCheck(signal);
   const controller = new AbortController();
   const onAbort = () => controller.abort();
@@ -143,9 +146,9 @@ async function postJson(url, payload, headers, signal, { step = '上游请求' }
     let response;
     try {
       response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify(payload),
+        method,
+        headers: method === 'POST' ? { 'Content-Type': 'application/json', ...headers } : headers,
+        body: method === 'POST' ? JSON.stringify(payload ?? {}) : undefined,
         signal: controller.signal,
       });
     } catch {
@@ -182,6 +185,14 @@ async function postJson(url, payload, headers, signal, { step = '上游请求' }
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
   }
+}
+
+function postJson(url, payload, headers, signal, options) {
+  return requestJson('POST', url, payload, headers, signal, options);
+}
+
+function getJson(url, headers, signal, options) {
+  return requestJson('GET', url, null, headers, signal, options);
 }
 
 function responseError(payload) {
@@ -525,23 +536,49 @@ async function resolveQaBackendContainer(configured) {
   throw new Error('未找到 M3 后端容器；请配置 M3_BACKEND_CONTAINER');
 }
 
-function parseQaObservations(logText) {
-  const byTurn = new Map();
+export function parseQaObservations(logText) {
+  const byClientTurn = new Map();
+  const byQuestion = new Map();
+  const bySession = new Map();
+  const decisionsBySession = new Map();
   for (const line of String(logText || '').split('\n')) {
+    const decisionMarker = 'qa: decision_engine session=';
+    const decisionAt = line.indexOf(decisionMarker);
+    if (decisionAt >= 0) {
+      const rest = line.slice(decisionAt + decisionMarker.length);
+      const modeAt = rest.indexOf(' mode=');
+      const payloadAt = rest.indexOf(' decision=', modeAt + 1);
+      if (modeAt > 0 && payloadAt > modeAt) {
+        const sessionId = rest.slice(0, modeAt).trim();
+        const mode = rest.slice(modeAt + ' mode='.length, payloadAt).trim();
+        try {
+          decisionsBySession.set(sessionId, {
+            mode,
+            decision: JSON.parse(rest.slice(payloadAt + ' decision='.length)),
+          });
+        } catch {
+          // 截断的 Decision 行跳过；对应题目会明确标记为缺少观测。
+        }
+      }
+    }
     const marker = 'qa: turn_observation session=';
     const at = line.indexOf(marker);
     if (at < 0) continue;
     const payloadAt = line.indexOf('observation=', at + marker.length);
     if (payloadAt < 0) continue;
+    const sessionId = line.slice(at + marker.length, payloadAt).trim();
     try {
       const observation = JSON.parse(line.slice(payloadAt + 'observation='.length));
       const clientTurnId = String(observation?.client_turn_id || '').trim();
-      if (clientTurnId) byTurn.set(clientTurnId, observation);
+      const questionMessageId = String(observation?.question_message_id || '').trim();
+      if (clientTurnId) byClientTurn.set(clientTurnId, observation);
+      if (questionMessageId) byQuestion.set(questionMessageId, observation);
+      if (sessionId) bySession.set(sessionId, observation);
     } catch {
       // 日志行被截断或并发写入时跳过，缺失的题会明确标记为不可评分。
     }
   }
-  return byTurn;
+  return { byClientTurn, byQuestion, bySession, decisionsBySession };
 }
 
 async function readQaObservations(config, sinceIso) {
@@ -549,11 +586,11 @@ async function readQaObservations(config, sinceIso) {
   const bin = await dockerBin();
   const result = await execFileOutput(bin, ['logs', '--since', sinceIso, container], 120_000);
   const text = `${result.stdout}\n${result.stderr}`;
-  const byTurn = parseQaObservations(text);
-  if (!byTurn.size && result.error) {
+  const indexes = parseQaObservations(text);
+  if (!indexes.byClientTurn.size && result.error) {
     throw new Error(`读取后端容器 ${container} 日志失败：${redactSensitive(result.stderr || result.error.message).slice(0, 240)}`);
   }
-  return { container, byTurn };
+  return { container, ...indexes };
 }
 
 function createQaAuth(config) {
@@ -586,42 +623,29 @@ async function qaAccessToken(config, auth, signal) {
   return auth.accessToken;
 }
 
-function qaAnswerPreview(data) {
-  const blocks = data?.answer?.content;
-  if (Array.isArray(blocks)) {
-    const text = blocks.map((block) => block?.text || '').join('\n').trim();
-    if (text) return text.slice(0, 200);
+function qaUserIdFromJwt(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) throw new RemoteError('M3 用户 Access Token 不是 JWT，无法确定会话用户');
+  try {
+    const encoded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=');
+    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    const userId = String(payload?.sub || '').trim();
+    if (!userId) throw new Error('missing sub');
+    return userId;
+  } catch {
+    throw new RemoteError('M3 用户 Access Token 缺少可解析的 sub');
   }
-  const messages = Array.isArray(data?.messages) ? data.messages : [];
-  const assistant = [...messages].reverse().find((message) => message?.role === 'assistant');
-  const content = assistant?.content;
-  if (typeof content === 'string') return content.trim().slice(0, 200);
-  if (Array.isArray(content)) return content.map((part) => part?.text || '').join('').trim().slice(0, 200);
-  return '';
 }
 
-async function qaAskTurn(config, auth, question, clientTurnId, signal) {
+async function qaAuthorizedRequest(config, auth, method, path, payload, signal, step) {
   const attempt = async () => {
     const token = await qaAccessToken(config, auth, signal);
-    const payload = await postJson(
-      new URL('/api/v1/qa/turns', config.qaBaseUrl).toString(),
-      {
-        question: [{ type: 'text', text: question }],
-        deliver: 'auto',
-        client_turn_id: clientTurnId,
-      },
-      { Authorization: `Bearer ${token}` },
-      signal,
-      { step: 'M3 AI 问答' },
-    );
-    const data = payload?.data;
-    if (!data || typeof data !== 'object') {
-      const message = payload?.message || payload?.msg || payload?.error?.message
-        || (typeof payload?.error === 'string' ? payload.error : '');
-      throw new RemoteError(`M3 AI 问答未返回 data${message ? `：${redactSensitive(String(message)).slice(0, 240)}` : ''}`);
-    }
-    if (!data.turn_id) throw new RemoteError('M3 AI 问答响应缺少 turn_id');
-    return data;
+    const url = new URL(path, config.qaBaseUrl).toString();
+    const headers = { Authorization: `Bearer ${token}` };
+    return method === 'GET'
+      ? getJson(url, headers, signal, { step })
+      : postJson(url, payload ?? {}, headers, signal, { step });
   };
   try {
     return await attempt();
@@ -635,21 +659,275 @@ async function qaAskTurn(config, auth, question, clientTurnId, signal) {
   }
 }
 
-function qaGoldSummary(entries) {
+async function qaAskTurn(config, auth, question, clientTurnId, signal) {
+  const payload = await qaAuthorizedRequest(
+    config,
+    auth,
+    'POST',
+    '/api/v1/qa/turns',
+    {
+      question: [{ type: 'text', text: question }],
+      deliver: 'auto',
+      client_turn_id: clientTurnId,
+    },
+    signal,
+    'M3 AI 问答',
+  );
+  const data = payload?.data;
+  if (!data || typeof data !== 'object') {
+    const message = payload?.message || payload?.msg || payload?.error?.message
+      || (typeof payload?.error === 'string' ? payload.error : '');
+    throw new RemoteError(`M3 AI 问答未返回 data${message ? `：${redactSensitive(String(message)).slice(0, 240)}` : ''}`);
+  }
+  if (!data.turn_id) throw new RemoteError('M3 AI 问答响应缺少 turn_id');
+  if (!data.session_id) throw new RemoteError('M3 AI 问答响应缺少 session_id，无法隔离下一题');
+  return data;
+}
+
+async function qaCloseSession(config, auth, sessionId, signal) {
+  const id = String(sessionId || '').trim();
+  if (!id) throw new Error('关闭会话时缺少 session_id');
+  const payload = await qaAuthorizedRequest(
+    config,
+    auth,
+    'POST',
+    `/api/v1/sessions/${encodeURIComponent(id)}/close`,
+    { confirmed: true },
+    signal,
+    'M3 关闭问答会话',
+  );
+  const status = String(payload?.data?.status || '');
+  if (status && status !== 'closed') {
+    throw new RemoteError(`M3 关闭问答会话后状态为 ${status}`);
+  }
+  return status || 'closed';
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function qaConversationSessionId(item) {
+  return String(item?.session_id || item?.id || '').trim();
+}
+
+function qaSessionStatus(item) {
+  return String(item?.status || '').trim().toLowerCase();
+}
+
+function qaIsEvalClientMessageId(value) {
+  return String(value || '').trim().startsWith(QA_EVAL_CLIENT_PREFIX);
+}
+
+async function qaListOpenCustomerSessions(config, auth, userId, signal) {
+  const open = [];
+  let cursor = '';
+  for (let page = 0; page < QA_CONVERSATION_MAX_PAGES; page += 1) {
+    const search = new URLSearchParams({
+      link_type: 'customer_service',
+      limit: String(QA_CONVERSATION_PAGE_LIMIT),
+    });
+    if (cursor) search.set('cursor', cursor);
+    const payload = await qaAuthorizedRequest(
+      config,
+      auth,
+      'GET',
+      `/api/v1/users/${encodeURIComponent(userId)}/conversation/sessions?${search.toString()}`,
+      null,
+      signal,
+      'M3 列出客服会话',
+    );
+    const items = Array.isArray(payload?.data) ? payload.data : [];
+    for (const item of items) {
+      const sessionId = qaConversationSessionId(item);
+      if (!sessionId || qaSessionStatus(item) === 'closed') continue;
+      open.push({
+        sessionId,
+        status: qaSessionStatus(item),
+        createdAt: String(item?.created_at || ''),
+      });
+    }
+    const pagination = payload?.pagination || {};
+    const next = String(pagination.cursor || '').trim();
+    if (!pagination.has_more) return open;
+    if (!next || next === cursor) {
+      throw new RemoteError('M3 客服会话分页游标异常，无法确认未关闭会话');
+    }
+    cursor = next;
+  }
+  throw new RemoteError(
+    `M3 客服会话超过 ${QA_CONVERSATION_PAGE_LIMIT * QA_CONVERSATION_MAX_PAGES} 条，已中止以避免误判会话状态`,
+  );
+}
+
+async function qaListCustomerMessages(config, auth, userId, signal) {
+  const messages = [];
+  let cursor = '';
+  for (let page = 0; page < QA_CONVERSATION_MAX_PAGES; page += 1) {
+    const search = new URLSearchParams({
+      link_type: 'customer_service',
+      limit: String(QA_CONVERSATION_PAGE_LIMIT),
+    });
+    if (cursor) search.set('cursor', cursor);
+    const payload = await qaAuthorizedRequest(
+      config,
+      auth,
+      'GET',
+      `/api/v1/users/${encodeURIComponent(userId)}/conversation/messages?${search.toString()}`,
+      null,
+      signal,
+      'M3 读取客服会话消息',
+    );
+    const items = Array.isArray(payload?.data) ? payload.data : [];
+    messages.push(...items);
+    const pagination = payload?.pagination || {};
+    const next = String(pagination.cursor || '').trim();
+    if (!pagination.has_more) return { messages, complete: true, pages: page + 1 };
+    if (!next || next === cursor) {
+      throw new RemoteError('M3 客服消息分页游标异常，无法校验会话内容');
+    }
+    cursor = next;
+  }
+  return { messages, complete: false, pages: QA_CONVERSATION_MAX_PAGES };
+}
+
+function qaSessionMessageSafety(messages, sessionId, clientTurnId = '') {
+  const scoped = messages.filter((item) => String(item?.session_id || '').trim() === sessionId);
+  const userMessages = scoped.filter((item) => String(item?.role || '').trim().toLowerCase() === 'user');
+  const unsafe = userMessages.filter((item) => !qaIsEvalClientMessageId(item?.client_message_id));
+  const turnIds = userMessages.map((item) => String(item?.client_message_id || '').trim()).filter(Boolean);
+  return {
+    messages: scoped.length,
+    user_messages: userMessages.length,
+    eval_user_messages: userMessages.length - unsafe.length,
+    unsafe_user_messages: unsafe.length,
+    turn_ids: turnIds,
+    has_client_turn: Boolean(clientTurnId) && turnIds.includes(clientTurnId),
+  };
+}
+
+function qaSessionSafetyReason(safety, sessionId) {
+  if (safety.unsafe_user_messages > 0) {
+    return `会话 ${sessionId} 含 ${safety.unsafe_user_messages} 条非 eval- 用户消息`;
+  }
+  if (safety.user_messages === 0) {
+    return `会话 ${sessionId} 没有用户消息，无法验证是否属于评测`;
+  }
+  return '';
+}
+
+function qaTimeAtLeast(value, thresholdMs) {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) && parsed >= thresholdMs;
+}
+
+async function qaCloseSessionWithRetry(config, auth, sessionId, signal) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await qaCloseSession(config, auth, sessionId, signal);
+    } catch (error) {
+      lastError = error;
+      const retryable = !(error instanceof RemoteError)
+        || !error.status
+        || error.status === 429
+        || error.status >= 500;
+      if (signal?.aborted || !retryable || attempt === 2) throw error;
+      await sleep(500 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
+async function qaPrepareIsolatedSessions(config, auth, signal) {
+  const token = await qaAccessToken(config, auth, signal);
+  const userId = qaUserIdFromJwt(token);
+  const openSessions = await qaListOpenCustomerSessions(config, auth, userId, signal);
+  const result = {
+    userId,
+    safeToClose: true,
+    preflightAction: 'none',
+    preflightClosed: false,
+    preflightSessionId: '',
+    preflightUserMessages: 0,
+  };
+  if (!openSessions.length) return result;
+  if (openSessions.length > 1) {
+    throw new RemoteError(
+      `M3 用户仍有 ${openSessions.length} 个未关闭的客服会话（${openSessions.map((item) => item.sessionId).join(', ')}），已中止以避免关闭真实会话`,
+    );
+  }
+  const open = openSessions[0];
+  const page = await qaListCustomerMessages(config, auth, userId, signal);
+  if (!page.complete) {
+    throw new RemoteError('M3 客服消息超过分页上限，无法在关闭前完成 eval- 白名单校验，已中止');
+  }
+  const safety = qaSessionMessageSafety(page.messages, open.sessionId);
+  const reason = qaSessionSafetyReason(safety, open.sessionId);
+  if (reason) {
+    throw new RemoteError(`M3 会话预检中止：${reason}；未关闭任何会话`);
+  }
+  await qaCloseSessionWithRetry(config, auth, open.sessionId, signal);
+  return {
+    ...result,
+    safeToClose: true,
+    preflightAction: 'closed_eval_session',
+    preflightClosed: true,
+    preflightSessionId: open.sessionId,
+    preflightUserMessages: safety.user_messages,
+  };
+}
+
+async function qaCleanupFailedTurn(config, auth, userId, signal, runStartedAt) {
+  const openSessions = await qaListOpenCustomerSessions(config, auth, userId, signal);
+  if (!openSessions.length) return { closed: [], unsafe: [] };
+  const page = await qaListCustomerMessages(config, auth, userId, signal);
+  if (!page.complete) {
+    throw new RemoteError('M3 客服消息超过分页上限，无法在失败清理前完成 eval- 白名单校验');
+  }
+  const closed = [];
+  const unsafe = [];
+  for (const session of openSessions) {
+    const safety = qaSessionMessageSafety(page.messages, session.sessionId);
+    if (safety.unsafe_user_messages > 0) {
+      unsafe.push({
+        session_id: session.sessionId,
+        reason: `含 ${safety.unsafe_user_messages} 条非 eval- 用户消息`,
+      });
+      continue;
+    }
+    if (safety.user_messages === 0 && !qaTimeAtLeast(session.createdAt, Date.parse(runStartedAt) - 60_000)) {
+      unsafe.push({
+        session_id: session.sessionId,
+        reason: '空会话早于本轮评测，无法验证归属',
+      });
+      continue;
+    }
+    await qaCloseSessionWithRetry(config, auth, session.sessionId, signal);
+    closed.push(session.sessionId);
+  }
+  return { closed, unsafe };
+}
+
+function qaGoldSummary(records, pick) {
+  const entries = records.map(pick);
   const present = entries.filter(Boolean);
   const scored = present.filter((entry) => entry.gold?.scorable_fact_count > 0);
   const recalls = scored.map((entry) => entry.gold.recall_at_k).filter(Number.isFinite);
+  const ks = scored.map((entry) => entry.gold.k).filter(Number.isFinite);
   const factsHit = scored.reduce((sum, entry) => sum + entry.gold.hit_fact_count, 0);
   const factsTotal = scored.reduce((sum, entry) => sum + entry.gold.scorable_fact_count, 0);
   const casesHit = scored.filter((entry) => entry.gold.hit_fact_count > 0).length;
   const latencies = present.map((entry) => entry.path_latency_ms).filter(Number.isFinite);
   return {
-    k: present.find((entry) => Number.isFinite(entry.gold?.k))?.gold?.k ?? null,
+    k_min: ks.length ? Math.min(...ks) : null,
+    k_max: ks.length ? Math.max(...ks) : null,
     cases_total: entries.length,
     cases_with_results: present.length,
     cases_scored: scored.length,
     cases_unscorable_gold: present.length - scored.length,
-    cases_failed: entries.length - present.length,
+    cases_without_results: records.length - present.length,
+    cases_call_error: records.filter((entry) => Boolean(entry.error)).length,
     cases_with_gold_hit: casesHit,
     hit_at_k: scored.length ? casesHit / scored.length : null,
     gold_facts_scored: factsTotal,
@@ -661,6 +939,53 @@ function qaGoldSummary(entries) {
   };
 }
 
+export function projectQaDecision(entry) {
+  const decision = entry?.decision || {};
+  return {
+    mode: entry?.mode ?? null,
+    action: decision.action ?? null,
+    refuse_domain: decision.refuse_domain ?? null,
+    clarify: decision.clarify ?? null,
+    insufficient_evidence: decision.insufficient_evidence ?? null,
+    safety_signal: decision.safety_signal ?? null,
+    emergency_signal: decision.emergency_signal ?? null,
+    compliance_block: decision.compliance_block ?? null,
+    safety_clarify: decision.safety_clarify ?? null,
+    expand_query: decision.expand_query ?? null,
+  };
+}
+
+function projectQaObservation(observation) {
+  const rewrite = observation?.rewrite || {};
+  const finiteOrNull = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+  return {
+    route: observation?.route ?? null,
+    route_domains: Array.isArray(observation?.route_domains) ? observation.route_domains : [],
+    final_ragflow_queries: Array.isArray(observation?.final_ragflow_queries)
+      ? observation.final_ragflow_queries
+      : [],
+    decision_mode: observation?.decision_mode ?? null,
+    decision_engine_active: observation?.decision_engine_active ?? null,
+    decision_action: observation?.decision_action ?? null,
+    decision_action_reason: observation?.decision_action_reason ?? null,
+    rewrite: {
+      mode: rewrite.mode ?? null,
+      called: rewrite.called ?? null,
+      applied: rewrite.applied ?? null,
+      fallback_reason: rewrite.fallback_reason ?? null,
+      latency_ms: finiteOrNull(rewrite.latency_ms),
+    },
+    ragflow_candidate_chunk_ids_at_12: uniqueIds(observation?.ragflow_candidate_chunk_ids_at_12 || []),
+    final_grounding_chunks: uniqueIds(observation?.final_grounding_chunks || []),
+    final_grounding_count: finiteOrNull(observation?.final_grounding_count),
+    duration_ms: finiteOrNull(observation?.duration_ms),
+  };
+}
+
 function countBy(values) {
   const counts = {};
   for (const value of values) {
@@ -669,6 +994,53 @@ function countBy(values) {
   }
   return counts;
 }
+
+export function summarizeAiQaRecords(records) {
+  const withObservation = records.filter((row) => row.observation);
+  const finalSummary = qaGoldSummary(records, (row) => row.final);
+  const rawSummary = qaGoldSummary(records, (row) => row.raw_ragflow);
+  const qaLatencies = records.map((row) => row.qa?.latency_ms).filter(Number.isFinite);
+  const rewriteLatencies = withObservation.map((row) => row.observation.rewrite?.latency_ms).filter(Number.isFinite);
+  const decided = records.filter((row) => row.decision);
+  const earlyExit = records.filter((row) => !row.observation && !row.error && row.decision);
+  const decision = {
+    cases_decided: decided.length,
+    cases_with_turn_observation: withObservation.length,
+    cases_early_exit: earlyExit.length,
+    cases_missing_observation: records.filter((row) => !row.observation && !row.error && !row.decision).length,
+    modes: countBy(decided.map((row) => row.decision.mode)),
+    actions: countBy(decided.map((row) => row.decision.action)),
+    early_exit_actions: countBy(earlyExit.map((row) => row.decision.action)),
+    engine_active_cases: withObservation.filter((row) => row.observation.decision_engine_active).length,
+    routes: countBy(withObservation.map((row) => row.observation.route)),
+  };
+  const queryRewrite = {
+    called_cases: withObservation.filter((row) => row.observation.rewrite?.called).length,
+    applied_cases: withObservation.filter((row) => row.observation.rewrite?.applied).length,
+    fallback_reasons: countBy(withObservation.map((row) => row.observation.rewrite?.fallback_reason || 'none')),
+    modes: countBy(withObservation.map((row) => row.observation.rewrite?.mode)),
+    p50_latency_ms: percentile(rewriteLatencies, 0.5),
+    p95_latency_ms: percentile(rewriteLatencies, 0.95),
+  };
+  return {
+    final_grounding: finalSummary,
+    ragflow_candidates_at_12: rawSummary,
+    service_latency_ms: {
+      p50: percentile(qaLatencies, 0.5),
+      p95: percentile(qaLatencies, 0.95),
+      mean: mean(qaLatencies) === null ? null : Number(mean(qaLatencies).toFixed(1)),
+    },
+    decision,
+    query_rewrite: queryRewrite,
+  };
+}
+
+export const AI_QA_METRIC_NOTES = {
+  final_grounding: '最终证据池 Recall@K：K 逐题取 turn_observation.final_grounding_count（服务端实际进入回答的证据条数），汇总仅给 K 范围；Gold 按 required facts 的 OR/AND 证据组判定。',
+  ragflow_candidates_at_12: 'RAGFlow 原始候选 Recall@12 / Hit@12：取 merge 之前的专业库 Top-12 chunk ID，代表检索层真实召回能力，与最终证据池口径不同。',
+  ai_qa: '真实调用 POST /api/v1/qa/turns（deliver=auto），包含 Decision 路由、Query 改写门禁与最终回答装配；单轮题通常 rewrite.called=false、fallback_reason=gate_skip。',
+  observation: '分数只来自后端 qa: turn_observation 日志；无观测的题不进入 Recall/Hit 分母，不使用接口 citations 或答案文本反推。Decision 判为 refuse_domain 等提前返回的题单独统计，不计作接口失败。',
+};
 
 async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => {} } = {}) {
   const { mode, config } = request;
@@ -683,9 +1055,37 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
   const logSince = new Date(Date.now() - 60_000).toISOString();
   const wallStart = performance.now();
   const auth = createQaAuth(config);
+  const sessionIsolation = {
+    user_id_configured: false,
+    preflight_action: 'none',
+    safe_to_close: null,
+    preflight_closed: false,
+    preflight_session_id: '',
+    preflight_user_messages: 0,
+    cases_with_session: 0,
+    cases_closed: 0,
+    unique_sessions: 0,
+    duplicate_sessions: 0,
+    close_failures: 0,
+    cases: [],
+  };
+  let sessionUserId = '';
   const records = [];
   let consecutiveFailures = 0;
   onProgress({ completed: 0, total: cases.length, case_id: '' });
+
+  try {
+    const prepared = await qaPrepareIsolatedSessions(config, auth, signal);
+    sessionUserId = prepared.userId;
+    sessionIsolation.user_id_configured = Boolean(sessionUserId);
+    sessionIsolation.preflight_action = prepared.preflightAction;
+    sessionIsolation.safe_to_close = prepared.safeToClose;
+    sessionIsolation.preflight_closed = prepared.preflightClosed;
+    sessionIsolation.preflight_session_id = prepared.preflightSessionId;
+    sessionIsolation.preflight_user_messages = prepared.preflightUserMessages;
+  } catch (error) {
+    throw new Error(`M3 问答会话隔离初始化失败：${error.message || error}`);
+  }
 
   for (let index = 0; index < cases.length; index += 1) {
     abortCheck(signal);
@@ -698,6 +1098,7 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
       required_fact_ids: output.required_fact_ids || [],
       client_turn_id: clientTurnId,
       qa: null,
+      session_closed: false,
       observation: null,
       final: null,
       raw_ragflow: null,
@@ -715,11 +1116,21 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
         answer_message_id: data.answer_message_id ? String(data.answer_message_id) : '',
         delivery: String(data.delivery || ''),
         latency_ms: Number((performance.now() - askStart).toFixed(1)),
-        answer_preview: qaAnswerPreview(data),
       };
       consecutiveFailures = 0;
     } catch (error) {
       if (signal?.aborted) throw new Error('评测已取消');
+      try {
+        const cleanup = await qaCleanupFailedTurn(config, auth, sessionUserId, signal, logSince);
+        if (cleanup.unsafe.length) {
+          throw new RemoteError(
+            `失败清理发现不可关闭会话：${cleanup.unsafe.map((item) => `${item.session_id}（${item.reason}）`).join('; ')}`,
+          );
+        }
+        row.session_cleanup = { closed: cleanup.closed, unsafe: [] };
+      } catch (cleanupError) {
+        throw new Error(`第 ${item.case_id} 题调用失败后无法安全清理 M3 会话：${cleanupError.message || cleanupError}`);
+      }
       if (isFatalRemoteError(error)) throw error;
       row.error = error.message || 'AI 问答调用失败';
       consecutiveFailures += 1;
@@ -728,11 +1139,36 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
       }
     }
 
+    if (row.qa?.session_id) {
+      try {
+        await qaCloseSessionWithRetry(config, auth, row.qa.session_id, signal);
+        row.session_closed = true;
+      } catch (error) {
+        sessionIsolation.close_failures += 1;
+        throw new Error(`第 ${item.case_id} 题完成后无法关闭 M3 会话：${error.message || error}`);
+      }
+    }
+
     records.push(row);
+    sessionIsolation.cases.push({
+      case_id: item.case_id,
+      session_id: row.qa?.session_id || '',
+      session_closed: row.session_closed,
+      error: Boolean(row.error),
+      cleanup_closed: row.session_cleanup?.closed || [],
+    });
     onProgress({ completed: index + 1, total: cases.length, case_id: item.case_id });
   }
 
   const warnings = [];
+  const caseSessionIds = records.map((row) => row.qa?.session_id).filter(Boolean);
+  sessionIsolation.cases_with_session = caseSessionIds.length;
+  sessionIsolation.cases_closed = records.filter((row) => row.session_closed).length;
+  sessionIsolation.unique_sessions = new Set(caseSessionIds).size;
+  sessionIsolation.duplicate_sessions = caseSessionIds.length - sessionIsolation.unique_sessions;
+  if (sessionIsolation.duplicate_sessions > 0) {
+    warnings.push(`${sessionIsolation.duplicate_sessions} 道题复用了已有 session，结果可能存在历史上下文污染。`);
+  }
   let container = config.qaBackendContainer || '';
   if (!records.length) {
     warnings.push('本轮没有可评测题目。');
@@ -740,9 +1176,13 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
     const logs = await readQaObservations(config, logSince);
     container = logs.container;
     for (const row of records) {
-      const observation = logs.byTurn.get(row.client_turn_id);
+      const decision = logs.decisionsBySession.get(row.qa?.session_id);
+      if (decision) row.decision = projectQaDecision(decision);
+      const observation = logs.byClientTurn.get(row.client_turn_id)
+        || logs.byQuestion.get(row.qa?.question_message_id)
+        || logs.bySession.get(row.qa?.session_id);
       if (!observation) continue;
-      row.observation = observation;
+      row.observation = projectQaObservation(observation);
       const finalIds = uniqueIds(observation.final_grounding_chunks || []);
       const finalK = Number(observation.final_grounding_count || finalIds.length);
       row.final = {
@@ -759,35 +1199,22 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
     }
     const missing = records.filter((row) => !row.observation).length;
     if (missing) {
-      warnings.push(`${missing} 题未在 docker logs 中找到 turn_observation；这些题不参与 Recall/Hit 统计，不能用接口 citations 替代。`);
+      const earlyExit = records.filter((row) => !row.observation && !row.error && row.decision);
+      const earlyExitActions = countBy(earlyExit.map((row) => row.decision.action));
+      const actionText = Object.entries(earlyExitActions).map(([action, count]) => `${action}=${count}`).join(', ');
+      warnings.push(
+        `${missing} 题未在 docker logs 中找到 turn_observation；其中 ${earlyExit.length} 题由 Decision 提前返回${actionText ? `（${actionText}）` : ''}，不是接口调用失败。这些题不参与 Recall/Hit 统计，不能用接口 citations 替代。`,
+      );
     }
   } catch (error) {
     warnings.push(`未能读取后端观测日志：${error.message}。所有题均标记为不可评分（不拿接口 citations 冒充检索结果）。`);
   }
 
-  const withObservation = records.filter((row) => row.observation);
-  const finalSummary = qaGoldSummary(records.map((row) => row.final));
-  const rawSummary = qaGoldSummary(records.map((row) => row.raw_ragflow));
-  const qaLatencies = records.map((row) => row.qa?.latency_ms).filter(Number.isFinite);
+  const metrics = summarizeAiQaRecords(records);
+  const finalSummary = metrics.final_grounding;
   if (finalSummary.cases_scored > 0 && finalSummary.gold_facts_hit === 0) {
     warnings.push('本轮所有可评分题均未命中 Gold；请先核对 Gold chunk 映射是否针对当前 qwen 数据库。');
   }
-  const rewriteLatencies = withObservation.map((row) => row.observation.rewrite?.latency_ms).filter(Number.isFinite);
-  const decision = {
-    cases_observed: withObservation.length,
-    modes: countBy(withObservation.map((row) => row.observation.decision_mode)),
-    actions: countBy(withObservation.map((row) => row.observation.decision_action)),
-    engine_active_cases: withObservation.filter((row) => row.observation.decision_engine_active).length,
-    routes: countBy(withObservation.map((row) => row.observation.route)),
-  };
-  const queryRewrite = {
-    called_cases: withObservation.filter((row) => row.observation.rewrite?.called).length,
-    applied_cases: withObservation.filter((row) => row.observation.rewrite?.applied).length,
-    fallback_reasons: countBy(withObservation.map((row) => row.observation.rewrite?.fallback_reason || 'none')),
-    modes: countBy(withObservation.map((row) => row.observation.rewrite?.mode)),
-    p50_latency_ms: percentile(rewriteLatencies, 0.5),
-    p95_latency_ms: percentile(rewriteLatencies, 0.95),
-  };
 
   return {
     run_id: randomUUID(),
@@ -803,23 +1230,11 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
     duration_ms: Number((performance.now() - wallStart).toFixed(1)),
     cases_total: cases.length,
     summary: {
-      final_grounding: finalSummary,
-      ragflow_candidates_at_12: rawSummary,
-      service_latency_ms: {
-        p50: percentile(qaLatencies, 0.5),
-        p95: percentile(qaLatencies, 0.95),
-        mean: mean(qaLatencies) === null ? null : Number(mean(qaLatencies).toFixed(1)),
-      },
-      decision,
-      query_rewrite: queryRewrite,
+      session_isolation: sessionIsolation,
+      ...metrics,
     },
     warnings,
-    metric_notes: {
-      final_grounding: '最终证据池 Recall@K：K 取 turn_observation.final_grounding_count（服务端实际进入回答的证据条数），Gold 按 required facts 的 OR/AND 证据组判定。',
-      ragflow_candidates_at_12: 'RAGFlow 原始候选 Recall@12：取 merge 之前的专业库 Top-12 chunk ID，代表检索层真实召回能力，与最终证据池口径不同。',
-      ai_qa: '真实调用 POST /api/v1/qa/turns（deliver=auto），包含 Decision 路由、Query 改写门禁与最终回答装配；单轮题通常 rewrite.called=false、fallback_reason=gate_skip。',
-      observation: '分数只来自后端 qa: turn_observation 日志；缺失观测的题不可评分，不使用接口 citations 或答案文本反推。',
-    },
+    metric_notes: AI_QA_METRIC_NOTES,
     rows: records,
   };
 }
