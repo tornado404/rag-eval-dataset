@@ -1,0 +1,57 @@
+name: deploy-m3
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '部署的分支/tag/SHA（默认 main）'
+        required: false
+        default: 'main'
+
+concurrency:
+  group: rag-eval-dataset-m3-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, macOS, ARM64, office]
+    timeout-minutes: 20
+    steps:
+      - name: Resolve deploy ref
+        id: ref
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.value }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Deploy to M3
+        shell: bash
+        run: bash deploy/deploy-m3.sh
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## M3 部署（${{ steps.ref.outputs.value }}）"
+            echo ''
+            echo '- runner: `m3-rag-eval-dataset`'
+            echo '- labels: `self-hosted,macOS,ARM64,office`'
+            echo '- service: `http://127.0.0.1:4183/`'
+          } >> "$GITHUB_STEP_SUMMARY"
