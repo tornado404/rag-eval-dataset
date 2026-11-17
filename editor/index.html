@@ -17,6 +17,9 @@ tr:hover{background:#f8faff}tr.dirty:hover{background:#fff4d6}.q{width:28%;font-
 .view-answer{white-space:pre-wrap}.editor-only{display:none}body.editing .editor-only{display:block}body.editing .view-answer,body.editing .view-field{display:none}
 textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;gap:6px;align-items:center}.status-dot{width:8px;height:8px;border-radius:50%;background:#d0d5dd;display:inline-block;margin-right:6px}.status-dot.dirty{background:#f79009}
 .msg{padding:10px 12px;border-radius:8px;margin-bottom:12px;display:none}.msg.error{display:block;background:#fef3f2;color:#b42318}.msg.ok{display:block;background:#ecfdf3;color:#067647}
+.eval-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;margin:0 0 16px;box-shadow:0 1px 2px #1018280a}.eval-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eval-head h2{font-size:18px;margin:0 0 4px}.eval-note{color:var(--muted);font-size:13px;margin:0 0 14px}.eval-config{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:10px 14px;margin:14px 0}.eval-field{display:flex;flex-direction:column;gap:5px;font-weight:600}.eval-field input,.eval-field select{width:100%;min-width:0}.eval-field small{font-weight:400;color:var(--muted)}.eval-target-config{display:contents}.eval-target-config[hidden]{display:none}.eval-datasets{display:flex;gap:8px 14px;flex-wrap:wrap;margin:6px 0 12px}.eval-datasets label{font-weight:400;display:inline-flex;gap:5px;align-items:center}.eval-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}.eval-actions button{padding:9px 12px}.eval-progress{display:flex;align-items:center;gap:10px;color:var(--muted);margin-top:12px}.eval-progress[hidden]{display:none}.eval-progress progress{width:min(420px,55vw);height:10px}.eval-results{margin-top:16px}.eval-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.eval-metric-card{border:1px solid var(--line);border-radius:9px;padding:12px}.eval-metric-card h3{font-size:14px;margin:0 0 8px}.eval-metric-card dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0}.eval-metric-card dt{color:var(--muted)}.eval-metric-card dd{margin:0;font-variant-numeric:tabular-nums;font-weight:650}.eval-details{overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px}.eval-details table{min-width:1050px;font-size:12px}.eval-details th{position:static}.eval-details td{padding:7px 9px}.eval-query{max-width:340px;white-space:pre-wrap;word-break:break-word}.eval-status{font-weight:650}.eval-status.drift{color:#b42318}.eval-status.ok{color:#067647}.eval-status.unavailable{color:var(--warn)}.eval-muted{color:var(--muted)}
+button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button.primary:hover:not(:disabled){background:#1947bd;border-color:#1947bd}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #84adff;outline-offset:2px}.eval-field small,.eval-note,.eval-muted{color:#596579}
+@media(max-width:760px){main{padding:18px 14px 48px}.eval-config{grid-template-columns:1fr}.eval-head{display:block}.eval-head strong{display:block;margin-top:6px}.eval-target-config .eval-field[style]{grid-column:auto!important}.eval-actions button{flex:1 1 180px}.eval-progress{align-items:flex-start;flex-direction:column}.eval-progress progress{width:100%}}
 @media print{body{background:#fff}main{max-width:none;padding:0}.bar,.msg,.cell-actions{display:none}.table-wrap{max-height:none;border:0}table{min-width:0}th{position:static}tr{break-inside:avoid}td{padding:6px 8px;font-size:11px}textarea{display:none}.print-answer{display:block}}
 </style>
 </head>
@@ -27,6 +30,62 @@ textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;g
   <label><input id="editmode" type="checkbox" style="width:auto;min-width:0;flex:0"> 编辑模式</label>
   <span class="sub" style="margin:0">勾选后显示输入框；默认保持一页只读表格。</span>
 </div>
+<section class="eval-card" aria-labelledby="eval-title">
+  <div class="eval-head">
+    <div><h2 id="eval-title">M3 RAGFlow 检索评测</h2><p class="eval-note">按 v1.4 Gold Fact 与 OR / AND 证据组计算 Top-12 覆盖；改写路径延迟包含 Query 生成和检索，不含答案生成。</p></div>
+    <strong id="eval-case-count" class="eval-muted">载入中…</strong>
+  </div>
+  <div class="eval-config">
+    <label class="eval-field">检索目标
+      <select id="eval-target"><option value="qa-probe">M3 AI 服务只读检索探针</option><option value="ragflow">RAGFlow 原始 Top-12</option></select>
+      <small id="eval-target-note">只读探针复用服务端融合检索，不写问答记录；需 M3 开启 AI_DEBUG_TOOLS_ENABLED，且 APP_ENV 为 dev/test/local。</small>
+    </label>
+    <label class="eval-field">Query 改写模型 API 地址
+      <input id="rewrite-endpoint" type="url" placeholder="https://模型服务/v1/chat/completions" autocomplete="off">
+      <small>OpenAI 兼容 Chat Completions 完整地址；本工具单独触发改写，建议使用与 M3 相同的模型配置。只测漂移时无需检索服务凭据。</small>
+    </label>
+    <label class="eval-field">模型名称
+      <input id="rewrite-model" placeholder="例如：当前服务使用的模型名" autocomplete="off">
+    </label>
+    <label class="eval-field">模型 API Key（可选）
+      <input id="rewrite-api-key" type="password" autocomplete="new-password" placeholder="本次运行使用，不会保存">
+    </label>
+    <div class="eval-target-config" data-target="qa-probe">
+      <label class="eval-field">M3 API 根地址
+        <input id="qa-base-url" type="url" placeholder="https://m3-api.example.com" autocomplete="url">
+      </label>
+      <label class="eval-field">M3 管理员 Bearer Token
+        <input id="qa-token" type="password" autocomplete="new-password" placeholder="仅用于本次运行，不会保存">
+      </label>
+    </div>
+    <div class="eval-target-config" data-target="ragflow" hidden>
+      <label class="eval-field">RAGFlow API 根地址
+        <input id="ragflow-base-url" type="url" placeholder="https://ragflow.example.com" autocomplete="url">
+      </label>
+      <label class="eval-field">RAGFlow API Key
+        <input id="ragflow-api-key" type="password" autocomplete="new-password" placeholder="仅用于本次运行，不会保存">
+      </label>
+      <div class="eval-field" style="grid-column:1/-1">RAGFlow 数据集
+        <div id="eval-datasets" class="eval-datasets"></div>
+        <small>默认读取当前数据集版本的 RAGFlow ID。</small>
+      </div>
+    </div>
+    <label class="eval-field">本轮题数上限
+      <input id="eval-max-cases" type="number" min="0" max="1000" step="1" value="0">
+      <small>0 表示全部 answer 题；可先填 3–5 做小批量检查。</small>
+    </label>
+  </div>
+  <div class="eval-actions" id="eval-actions">
+    <button type="button" class="primary" data-mode="full">一键测试全部指标</button>
+    <button type="button" data-mode="recall">Recall@12 / Gold Hit@12</button>
+    <button type="button" data-mode="drift">Query 漂移率</button>
+    <button type="button" data-mode="latency">P50 / P95 延迟</button>
+    <button type="button" id="eval-cancel" hidden>取消本轮</button>
+    <button type="button" id="eval-download" disabled>下载 JSON 报告</button>
+  </div>
+  <div class="eval-progress" id="eval-progress-wrap" hidden><progress id="eval-progress" max="1" value="0" aria-label="评测进度"></progress><span id="eval-status" role="status" aria-live="polite"></span></div>
+  <div id="eval-results" class="eval-results"></div>
+</section>
 <div id="msg" class="msg"></div>
 <div class="bar">
   <input id="search" placeholder="搜索问题、答案、行为或事实 ID">
@@ -41,8 +100,8 @@ textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;g
 <tbody id="body"></tbody>
 </table></div>
 <script>
-const state={cases:[],facts:[],evidences:[],expected_outputs:[]};
-let original=new Map(),dirty=new Set(),debounce=null;
+const state={cases:[],facts:[],evidences:[],fact_evidence_relations:[],datasets:[],expected_outputs:[]};
+let original=new Map(),dirty=new Set(),debounce=null,activeEvalController=null,lastEvalReport=null;
 const q=id=>document.getElementById(id), body=q('body'), msg=q('msg');
 const factText=new Map();
 function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
@@ -104,6 +163,133 @@ q('save').addEventListener('click',async()=>{
     showMsg(`已保存 ${data.saved} 条${data.commit?`；commit ${data.commit}`:''}`);
   }catch(err){showMsg(err.message,'error')}finally{q('save').disabled=false}
 });
+function rate(v){return Number.isFinite(v)?`${(v*100).toFixed(1)}%`:'—'}
+function milliseconds(v){return Number.isFinite(v)?`${Math.round(v)} ms`:'—'}
+function goldText(gold){return gold&&gold.scorable_fact_count?`${gold.hit_fact_count}/${gold.scorable_fact_count} 已评分（${rate(gold.recall_at_12)}）；Gold 映射 ${gold.scorable_fact_count}/${gold.required_fact_count}`:'不可评分'}
+function renderDatasetOptions(){
+  const host=q('eval-datasets');
+  host.innerHTML=state.datasets.map(ds=>`<label><input type="checkbox" data-dataset-id="${esc(ds.dataset_id)}" checked> ${esc(ds.dataset_id)} · ${esc(ds.dataset_name)} <span class="eval-muted">(${esc(ds.ragflow_dataset_id)})</span></label>`).join('');
+}
+function renderEvalTarget(){
+  const target=q('eval-target').value;
+  document.querySelectorAll('.eval-target-config').forEach(el=>{el.hidden=el.dataset.target!==target});
+  q('eval-target-note').textContent=target==='qa-probe'
+    ?'只读探针复用服务端融合检索，不写问答记录；需 M3 开启 AI_DEBUG_TOOLS_ENABLED，且 APP_ENV 为 dev/test/local。'
+    :'直接调用 RAGFlow 检索接口，返回纯 RAGFlow Top-12；数据集 ID 取自当前版本映射。';
+}
+function metricCard(title,stats){
+  if(!stats)return '';
+  return `<section class="eval-metric-card"><h3>${esc(title)}</h3><dl>
+    <dt>Gold Recall@12（宏平均）</dt><dd>${rate(stats.recall_at_12)}</dd>
+    <dt>Gold Hit@12</dt><dd>${rate(stats.gold_hit_at_12)} <span class="eval-muted">(${stats.cases_with_gold_hit??0}/${stats.cases_scored??0})</span></dd>
+    <dt>P50</dt><dd>${milliseconds(stats.p50_latency_ms)}</dd>
+    <dt>P95</dt><dd>${milliseconds(stats.p95_latency_ms)}</dd>
+    <dt>可评分 / 总题数</dt><dd>${stats.cases_scored??0}/${stats.cases_total??0}</dd>
+    <dt>Gold 映射缺失 / 检索失败</dt><dd>${stats.cases_unscorable_gold??0} / ${stats.cases_failed??0}</dd>
+  </dl></section>`;
+}
+function renderEvalReport(report){
+  const summary=report.summary||{},drift=summary.query_drift||{},rewriteLatency=summary.query_rewrite_latency_ms||{};
+  const mode=report.mode;
+  const cards=[];
+  if(mode!=='drift'){
+    cards.push(metricCard('原始问题 · 基线',summary.original));
+    cards.push(metricCard('Query 改写 · 检索链路',summary.rewritten));
+  }
+  if(mode==='full'||mode==='drift')cards.push(`<section class="eval-metric-card"><h3>Query 漂移判定</h3><dl>
+    <dt>漂移率</dt><dd>${rate(drift.drift_rate)} <span class="eval-muted">(${drift.drifted_cases??0}/${drift.judged_cases??0})</span></dd>
+    <dt>判定覆盖</dt><dd>${rate(drift.judge_coverage)}</dd>
+    <dt>改写失败</dt><dd>${drift.failed_rewrites??0}</dd>
+    <dt>判定不可用</dt><dd>${drift.unavailable_cases??0}</dd>
+    <dt>改写耗时 P50 / P95</dt><dd>${milliseconds(rewriteLatency.p50)} / ${milliseconds(rewriteLatency.p95)}</dd>
+  </dl></section>`);
+  const rows=report.rows||[];
+  const details=rows.map(row=>{
+    const status=row.drift?.status||'unavailable';
+    const statusText={ok:'无漂移',drift:'检测到漂移',rewrite_failed:'改写失败',unavailable:'未判定'}[status]||status;
+    const rewritten=row.rewritten_query||row.error||'—';
+    return `<tr><td>${esc(row.case_id)}</td><td class="eval-query">${esc(row.question)}</td><td class="eval-query">${esc(rewritten)}</td>
+      <td class="eval-status ${status==='drift'||status==='rewrite_failed'?'drift':status==='ok'?'ok':'unavailable'}">${esc(statusText)}${row.drift?.reason?`<br><span class="eval-muted">${esc(row.drift.reason)}</span>`:''}</td>
+      <td>${mode==='drift'?'—':goldText(row.original?.gold)}</td><td>${mode==='drift'?'—':goldText(row.rewritten?.gold)}</td>
+      <td>${milliseconds(row.original?.path_latency_ms)}</td><td>${milliseconds(row.rewrite_path_latency_ms)}</td></tr>`;
+  }).join('');
+  const notes=report.metric_notes||{};
+  q('eval-results').innerHTML=`<p class="eval-note">运行 ${esc(report.run_id)} · ${report.cases_total} 题 · 总耗时 ${milliseconds(report.duration_ms)} · 目标：${report.target==='qa-probe'?'M3 服务探针':'RAGFlow 原始接口'} · 模型：${esc(report.target_config?.rewrite_model||'')}</p>
+    <div class="eval-cards">${cards.join('')}</div>
+    <p class="eval-note">Recall@12 按可映射的 required facts 和数据集 OR/AND 证据组评分。${report.target==='qa-probe'?` ${esc(notes.qa_probe||'')}`:''} ${esc(notes.query_rewrite||'')} ${esc(notes.latency||'')}</p>
+    <details><summary>逐题结果（${rows.length}）</summary><div class="eval-details"><table><thead><tr><th>Case</th><th>原问题</th><th>改写 Query / 错误</th><th>漂移</th><th>基线 Gold 覆盖</th><th>改写 Gold 覆盖</th><th>基线耗时</th><th>改写链路耗时</th></tr></thead><tbody>${details}</tbody></table></div></details>`;
+}
+function buildEvalConfig(){
+  const target=q('eval-target').value;
+  const config={
+    target,
+    rewriteEndpoint:q('rewrite-endpoint').value.trim(),
+    rewriteModel:q('rewrite-model').value.trim(),
+    rewriteApiKey:q('rewrite-api-key').value,
+    maxCases:Number(q('eval-max-cases').value||0),
+  };
+  if(target==='qa-probe'){
+    config.qaBaseUrl=q('qa-base-url').value.trim();
+    config.qaToken=q('qa-token').value;
+  }else{
+    config.ragflowBaseUrl=q('ragflow-base-url').value.trim();
+    config.ragflowApiKey=q('ragflow-api-key').value;
+    config.datasetIds=[...document.querySelectorAll('#eval-datasets input:checked')].map(input=>{
+      const dataset=state.datasets.find(ds=>ds.dataset_id===input.dataset.datasetId);
+      return dataset?.ragflow_dataset_id;
+    }).filter(Boolean);
+  }
+  return config;
+}
+async function runEvaluation(mode){
+  if(activeEvalController)return;
+  const controller=new AbortController();activeEvalController=controller;
+  lastEvalReport=null;q('eval-download').disabled=true;
+  const eligible=state.expected_outputs.filter(row=>row.expected_behavior==='answer'&&(row.required_fact_ids||[]).length>0).length;
+  const maxCases=Number(q('eval-max-cases').value||0),total=maxCases>0?Math.min(maxCases,eligible):eligible;
+  q('eval-progress').max=Math.max(1,total);q('eval-progress').value=0;q('eval-progress-wrap').hidden=false;
+  q('eval-status').textContent=`正在准备 ${total} 道题…`;
+  document.querySelectorAll('#eval-actions [data-mode]').forEach(button=>{button.disabled=true});
+  q('eval-cancel').hidden=false;
+  try{
+    const response=await fetch('/api/eval/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,config:buildEvalConfig()}),signal:controller.signal});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||`启动评测失败（HTTP ${response.status}）`)}
+    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+    while(true){
+      const {value,done}=await reader.read();buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});
+      const lines=buffer.split('\n');buffer=lines.pop()||'';
+      for(const line of lines){
+        if(!line.trim())continue;
+        const event=JSON.parse(line);
+        if(event.type==='progress'){
+          q('eval-progress').value=event.completed;
+          q('eval-status').textContent=`已完成 ${event.completed}/${event.total} · ${event.case_id}`;
+        }else if(event.type==='done'){
+          lastEvalReport=event.report;q('eval-download').disabled=false;renderEvalReport(lastEvalReport);
+          q('eval-progress').value=event.report.cases_total;q('eval-status').textContent=`完成：${event.report.cases_total} 道题`;
+        }else if(event.type==='error')throw new Error(event.error||'评测失败');
+      }
+      if(done)break;
+    }
+    if(!lastEvalReport)throw new Error('评测连接结束，但没有收到结果报告');
+  }catch(error){
+    q('eval-status').textContent=error.name==='AbortError'?'已取消本轮':error.message;
+  }finally{
+    activeEvalController=null;
+    document.querySelectorAll('#eval-actions [data-mode]').forEach(button=>{button.disabled=false});
+    q('eval-cancel').hidden=true;
+  }
+}
+q('eval-target').addEventListener('change',renderEvalTarget);
+q('eval-actions').addEventListener('click',event=>{
+  const button=event.target.closest('button');if(!button)return;
+  if(button.id==='eval-cancel'){activeEvalController?.abort();return}
+  if(button.id==='eval-download'&&lastEvalReport){
+    const blob=new Blob([JSON.stringify(lastEvalReport,null,2)+'\n'],{type:'application/json'}),link=document.createElement('a');
+    link.href=URL.createObjectURL(blob);link.download=`rag-eval-${lastEvalReport.dataset_version}-${lastEvalReport.run_id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);return;
+  }
+  if(button.dataset.mode)runEvaluation(button.dataset.mode);
+});
 async function load(){
   try{
     const res=await fetch('/api/state');if(!res.ok)throw new Error('无法载入数据');
@@ -111,6 +297,9 @@ async function load(){
     for(const fact of state.facts)factText.set(fact.fact_id,fact.fact);
     original=new Map(state.expected_outputs.map(r=>[r.case_id,structuredClone(r)]));
     for(const label of [...new Set(state.cases.map(c=>c.expected_behavior))].sort())q('behavior').add(new Option(label,label));
+    renderDatasetOptions();renderEvalTarget();
+    const answerCases=state.expected_outputs.filter(row=>row.expected_behavior==='answer'&&(row.required_fact_ids||[]).length>0).length;
+    q('eval-case-count').textContent=`${answerCases} 道 Gold 题`;
     render();
   }catch(err){showMsg(err.message,'error')}
 }

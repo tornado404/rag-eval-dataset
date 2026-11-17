@@ -4,6 +4,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { REPO_ROOT, datasetDir, readJsonl, writeJsonl, validateDataset } from '../scripts/lib/dataset.mjs';
+import { normalizeEvaluationRequest, runEvaluation } from './evaluator.mjs';
 
 const PORT = Number(process.env.PORT || 4173);
 const VERSION = process.env.DATASET_VERSION || 'v1.4';
@@ -74,6 +75,8 @@ function loadState() {
     cases: readJsonl(path.join(dir, 'cases.jsonl')),
     facts: readJsonl(path.join(dir, 'facts.jsonl')),
     evidences: readJsonl(path.join(dir, 'evidences.jsonl')),
+    fact_evidence_relations: readJsonl(path.join(dir, 'fact_evidence_relations.jsonl')),
+    datasets: readJsonl(path.join(dir, 'datasets.jsonl')),
     expected_outputs: readJsonl(path.join(dir, 'expected_outputs.jsonl')),
   };
 }
@@ -84,6 +87,44 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/state') {
       return send(res, 200, loadState());
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/eval/run') {
+      const body = await safeBody(req);
+      let request;
+      try {
+        request = normalizeEvaluationRequest(body);
+      } catch (error) {
+        return send(res, 400, { error: error.message || 'invalid evaluation settings' });
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Cache-Control': 'no-store, no-transform',
+        'X-Accel-Buffering': 'no',
+      });
+      const controller = new AbortController();
+      res.on('close', () => {
+        if (!res.writableEnded) controller.abort();
+      });
+      const emit = (event) => {
+        if (res.destroyed || res.writableEnded) return false;
+        res.write(`${JSON.stringify(event)}\n`);
+        return true;
+      };
+
+      try {
+        const report = await runEvaluation(loadState(), request, {
+          signal: controller.signal,
+          onProgress: (progress) => emit({ type: 'progress', ...progress }),
+        });
+        emit({ type: 'done', report });
+      } catch (error) {
+        if (!controller.signal.aborted) emit({ type: 'error', error: error.message || 'evaluation failed' });
+      } finally {
+        if (!res.destroyed) res.end();
+      }
+      return;
     }
 
     if (req.method === 'POST' && url.pathname === '/api/save') {
