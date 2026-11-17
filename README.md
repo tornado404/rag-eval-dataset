@@ -2,14 +2,14 @@
 
 这是一个独立维护的 RAG 问答评测数据集和本机编辑器。它把评测题、标准事实、证据来源和预期输出保存在 Git 可追踪的 JSONL 文件中，用于重复评估知识检索结果，并为下游回答评测提供必需/禁止事实基准。
 
-当前仓库包含从 `ai-support-platform` 知识地图导入的 `v1.4`：共 163 条问题，覆盖产品说明、用药与安全信息、临床研究、客服边界等场景。来源路径和上游标签记录在根目录 `MANIFEST.json`；`datasets/v1.4/FREEZE.md` 记录该版本的冻结依据与变更规则。
+当前默认版本为 `v1.5`：题目、事实和预期输出承接 `v1.4`（163 条问题，覆盖产品说明、用药与安全信息、临床研究、客服边界等场景），证据 chunk ID 重新映射到 M3 的 qwen 解析库。来源路径和上游标签记录在根目录 `MANIFEST.json`；`datasets/v1.4/FREEZE.md` 记录上游版本的冻结依据，`datasets/v1.5/README.md` 记录本轮映射口径与未映射证据。
 
 ## 目标与用途
 
 - 固定一组可复用的问题和事实标注，便于比较不同知识库、检索配置或模型版本的评测结果。
 - 将问题（Case）、原子事实（Fact）、来源证据（Evidence）和预期输出关联起来，便于追溯答案依据。
 - 通过本机网页快速检索、查看和编辑预期答案与标注状态；每次保存都经过数据校验。
-- 通过评测面板调用配置的 Query 改写模型及 M3 只读检索探针或 RAGFlow 原始接口，比较 Top-12 检索结果、Query 漂移和延迟。
+- 通过评测面板调用配置的 Query 改写模型及 M3 只读检索探针或 RAGFlow 原始接口，比较 Top-12 检索结果、Query 漂移和延迟；也可以直接调用 AI 问答 API，读取服务端 Decision 路由与 Query 改写观测。
 - 从已有的检索评测明细计算 `Recall@K`、`any_hit@K` 和 `strict_hit@K` 汇总指标。
 
 本项目负责维护评测数据和评估检索质量，不启动 RAGFlow、不生成问答答案，也不负责把数据自动导入 RAGFlow。`compute_hit.mjs` 读取上游评测程序生成的明细文件。评测结果用于评估系统，不是面向患者的医疗建议。
@@ -20,14 +20,20 @@
 .
 ├── MANIFEST.json                   # 当前版本、版本清单、数据来源和指标口径
 ├── datasets/
-│   └── v1.4/
+│   ├── v1.4/                       # 上游冻结版本
+│   │   ├── cases.jsonl
+│   │   ├── ...
+│   │   └── FREEZE.md
+│   └── v1.5/                       # 当前默认版本
 │       ├── cases.jsonl             # 问题、场景、必需/禁止事实 ID
 │       ├── facts.jsonl             # 原子事实
 │       ├── evidences.jsonl         # 原文证据和定位信息
 │       ├── fact_evidence_relations.jsonl
 │       ├── expected_outputs.jsonl  # 预期答案、行为、rubric 和审核状态
+│       ├── datasets.jsonl          # 目标 RAGFlow 数据集元数据
+│       ├── mapping_report.json     # v1.4 → v1.5 证据映射统计
 │       ├── annotation_guideline.md # 标注规范
-│       ├── FREEZE.md               # 冻结记录与后续版本规则
+│       ├── README.md               # 映射口径与重新生成方式
 │       └── MANIFEST.json           # 该版本的文件清单与校验信息
 ├── editor/
 │   ├── index.html                  # 本机编辑页面
@@ -40,7 +46,7 @@
 └── .github/workflows/validate.yml  # Push / PR 时运行数据校验
 ```
 
-JSONL 文件每行是一条独立 JSON 记录。`cases.jsonl` 描述问题和预期检索事实；`facts.jsonl` 与 `evidences.jsonl` 记录事实及其来源；`fact_evidence_relations.jsonl` 表达事实和证据之间的关系；`expected_outputs.jsonl` 保存答案文本、期望行为、必需/禁止事实、评分要点和审核状态。标注规则以 [annotation_guideline.md](datasets/v1.4/annotation_guideline.md) 为准。
+JSONL 文件每行是一条独立 JSON 记录。`cases.jsonl` 描述问题和预期检索事实；`facts.jsonl` 与 `evidences.jsonl` 记录事实及其来源；`fact_evidence_relations.jsonl` 表达事实和证据之间的关系；`expected_outputs.jsonl` 保存答案文本、期望行为、必需/禁止事实、评分要点和审核状态。标注规则以 [annotation_guideline.md](datasets/v1.5/annotation_guideline.md) 为准（与 v1.4 相同）。
 
 ## 环境要求
 
@@ -56,7 +62,7 @@ JSONL 文件每行是一条独立 JSON 记录。`cases.jsonl` 描述问题和预
 npm run editor
 ```
 
-然后打开 [http://127.0.0.1:4173/](http://127.0.0.1:4173/)。服务默认读取 `datasets/v1.4/`。按 `Ctrl+C` 停止服务。
+然后打开 [http://127.0.0.1:4173/](http://127.0.0.1:4173/)。服务默认读取 `datasets/v1.5/`。按 `Ctrl+C` 停止服务。
 
 页面默认是只读表格。勾选“编辑模式”后可以修改预期答案、预期行为和状态（`draft`、`review`、`approved`）；搜索框可匹配问题、答案、行为和事实 ID，两个筛选器可按状态和预期行为过滤记录。必需/禁止事实 ID 和评分要点当前在页面中展示，编辑器网页没有对应的编辑输入框。
 
@@ -75,7 +81,7 @@ npm run editor
 | --- | --- | --- |
 | `PORT` | `4173` | 本机服务端口 |
 | `BIND_ADDRESS` | `127.0.0.1` | 监听地址；M3 部署设为 `127.0.0.1` 以支持局域网访问 |
-| `DATASET_VERSION` | `v1.4` | 要读取和编辑的 `datasets/<版本>/` 目录 |
+| `DATASET_VERSION` | `v1.5` | 要读取和编辑的 `datasets/<版本>/` 目录 |
 | `AUTO_COMMIT` | `1` | 自动提交；设为 `0` 时仍写入文件，但不自动 commit |
 | `AUTO_PUSH` | `0` | 设为 `1` 时，在自动 commit 后推送当前分支 |
 | `COMMIT_PREFIX` | `dataset(editor)` | 自动提交信息前缀 |
@@ -85,7 +91,7 @@ npm run editor
 可以通过当前命令临时设置变量：
 
 ```bash
-PORT=4173 DATASET_VERSION=v1.4 npm run editor
+PORT=4173 DATASET_VERSION=v1.5 npm run editor
 ```
 
 `.env.example` 是配置示例；Node 服务不会自动读取 `.env`。若使用 `.env`，启动前需在当前 shell 中显式加载：
@@ -118,7 +124,7 @@ GitHub Actions 在 push 和 pull request 时校验数据；`deploy-m3` workflow 
 先由上游检索评测流程生成明细文件，再运行：
 
 ```bash
-node scripts/compute_hit.mjs /path/to/details_mode_a.jsonl --top-k 12 --dataset v1.4
+node scripts/compute_hit.mjs /path/to/details_mode_a.jsonl --top-k 12 --dataset v1.5
 ```
 
 `--top-k` 默认为 `12`，记录在结果的 `top_k` 字段中。脚本不会据此执行检索或截取候选；输入明细中的 `fact_recall`、`required_covered` 和 `required_total` 必须已经按对应 K 值计算。指定 `--dataset` 后，脚本用该版本的 Case 行为筛出 `answer` 题；未指定时使用明细行中的 `expected_behavior`。
@@ -134,7 +140,7 @@ node scripts/compute_hit.mjs /path/to/details_mode_a.jsonl --top-k 12 --dataset 
 
 ## 数据版本与发布
 
-`v1.4` 是当前导入并冻结的数据版本。冻结标签用于重现历史评测；Git 标签指向的内容不会因后续分支修改而改变。不过，当前编辑器默认配置为 `DATASET_VERSION=v1.4`，代码本身不会阻止在工作分支上编辑它。冻结规则要求后续数据变更发布为新版本，因此**正式更新时应新增版本目录，不要覆盖已发布版本**。
+`v1.4` 是上游导入并冻结的数据版本；`v1.5` 是当前默认的 M3 qwen 映射版本，题目与事实不变，只修正证据定位。冻结标签用于重现历史评测；Git 标签指向的内容不会因后续分支修改而改变。代码本身不会阻止在工作分支上编辑当前版本，但冻结规则要求后续数据变更发布为新版本，因此**正式更新时应新增版本目录，不要覆盖已发布版本**。
 
 推荐的版本发布流程：
 
@@ -168,4 +174,4 @@ npm run editor
 
 ## 版本冻结记录
 
-查看 [v1.4 冻结记录](datasets/v1.4/FREEZE.md) 了解数据来源、163 条题目的组成、相对上游版本的变化和后续升级规则。编辑细节以当前 `datasets/<版本>/` 中的 JSONL、规范和 manifest 为准。
+查看 [v1.4 冻结记录](datasets/v1.4/FREEZE.md) 了解上游数据来源、163 条题目的组成和后续升级规则；查看 [v1.5 映射说明](datasets/v1.5/README.md) 了解 qwen 知识库映射、3 条未映射证据和重新生成方式。编辑细节以当前 `datasets/<版本>/` 中的 JSONL、规范和 manifest 为准。

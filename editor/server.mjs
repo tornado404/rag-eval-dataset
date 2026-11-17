@@ -8,7 +8,7 @@ import { normalizeEvaluationRequest, runEvaluation } from './evaluator.mjs';
 
 const PORT = Number(process.env.PORT || 4173);
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '127.0.0.1';
-const VERSION = process.env.DATASET_VERSION || 'v1.4';
+const VERSION = process.env.DATASET_VERSION || 'v1.5';
 const AUTO_COMMIT = process.env.AUTO_COMMIT !== '0';
 const AUTO_PUSH = process.env.AUTO_PUSH === '1';
 const COMMIT_PREFIX = process.env.COMMIT_PREFIX || 'dataset(editor)';
