@@ -62,18 +62,21 @@ function splitList(value) {
 
 function buildEvalDefaults() {
   const maxCases = Number(evalEnv('EVAL_MAX_CASES') || 0);
+  const configuredTarget = evalEnv('EVAL_TARGET');
   return {
-    target: evalEnv('EVAL_TARGET') === 'qa-probe' ? 'qa-probe' : 'ragflow',
+    target: ['qa-probe', 'ai-qa'].includes(configuredTarget) ? configuredTarget : 'ragflow',
     rewriteEndpoint: evalEnv('EVAL_REWRITE_ENDPOINT') || 'http://192.168.31.201:8000/v1/chat/completions',
     rewriteModel: evalEnv('EVAL_REWRITE_MODEL') || 'Qwen3.6-35B-A3B-4bit',
     ragflowBaseUrl: evalEnv('RAGFLOW_BASE_URL') || 'http://192.168.31.201:8088',
     qaBaseUrl: evalEnv('M3_BASE_URL') || 'https://api.nicoyabio.com',
+    qaBackendContainer: evalEnv('M3_BACKEND_CONTAINER'),
     datasetIds: splitList(evalEnv('RAGFLOW_DATASET_IDS')),
     maxCases: Number.isInteger(maxCases) && maxCases >= 0 && maxCases <= 1000 ? maxCases : 0,
     credentials: {
       rewriteApiKey: Boolean(evalEnv('EVAL_REWRITE_API_KEY')),
       ragflowApiKey: Boolean(evalEnv('RAGFLOW_API_KEY')),
       qaToken: Boolean(evalEnv('M3_ADMIN_TOKEN')),
+      qaUserAuth: Boolean(evalEnv('M3_QA_USER_JWT') || evalEnv('M3_QA_USER_REFRESH_TOKEN')),
     },
   };
 }
@@ -99,6 +102,12 @@ function withServerDefaults(body) {
   } else if (config.target === 'qa-probe') {
     config.qaBaseUrl = config.qaBaseUrl || defaults.qaBaseUrl;
     config.qaToken = config.qaToken || evalEnv('M3_ADMIN_TOKEN');
+  } else if (config.target === 'ai-qa') {
+    config.qaBaseUrl = config.qaBaseUrl || defaults.qaBaseUrl;
+    // 用户 JWT / refresh token 只从服务端环境读取，浏览器永远拿不到。
+    config.qaUserJwt = evalEnv('M3_QA_USER_JWT');
+    config.qaRefreshToken = evalEnv('M3_QA_USER_REFRESH_TOKEN');
+    config.qaBackendContainer = config.qaBackendContainer || evalEnv('M3_BACKEND_CONTAINER');
   }
   return { ...body, config };
 }
@@ -256,6 +265,7 @@ server.listen(PORT, BIND_ADDRESS, () => {
   const defaults = buildEvalDefaults();
   console.log(`Eval config: ${EVAL_CONFIG_FILE}${Object.keys(EVAL_FILE_ENV).length ? '' : ' (not found)'}`);
   console.log(`Eval default target: ${defaults.target} | ragflow key: ${defaults.credentials.ragflowApiKey ? 'configured' : 'missing'} | model key: ${defaults.credentials.rewriteApiKey ? 'configured' : 'missing'}`);
+  console.log(`AI QA real-path credential: ${defaults.credentials.qaUserAuth ? 'configured' : 'missing'} | backend container: ${defaults.qaBackendContainer || 'auto-detect'}`);
   console.log(`Dataset version: ${VERSION}`);
   console.log(`Auto commit: ${AUTO_COMMIT ? 'on' : 'off'} | Auto push: ${AUTO_PUSH ? 'on' : 'off'}`);
   console.log(`Exit: Ctrl+C`);

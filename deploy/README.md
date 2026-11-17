@@ -17,3 +17,13 @@
 `main` 推送或手动触发 `deploy-m3` workflow 后，runner 先 checkout 指定提交，再执行 `deploy/deploy-m3.sh`。脚本把该次 checkout 的文件同步到部署目录，写入 `DEPLOYED_SHA`，重启 launchd 服务并检查本机与默认网卡地址。
 
 部署服务固定使用 `BIND_ADDRESS=0.0.0.0`、`AUTO_COMMIT=0`、`AUTO_PUSH=0`；网页端编辑产生的改动由维护者按正常 Git 流程提交，避免部署环境自动回写仓库。服务没有登录认证；局域网访问者可以读取、编辑数据并调用评测接口，只应在受信任的私有网络使用。
+
+## AI 问答真实链路评测
+
+页面“检索目标”选 **M3 AI 问答真实链路** 时，服务会真实调用 `POST /api/v1/qa/turns`（`deliver=auto`），完整经过 Decision 路由、Query 改写门禁和最终证据装配，再用 `docker logs` 读取后端 `qa: turn_observation` 打分：
+
+- 最终证据池：`final_grounding_chunks`，`Recall@K` 的 K 取 `final_grounding_count`。
+- 检索层：`ragflow_candidate_chunk_ids_at_12`，即 merge 前的 RAGFlow 专业库 Top-12，对应 `Recall@12 / Hit@12`。
+- 缺失观测的题标记为不可评分，不使用接口 citations 或答案文本反推。
+
+在 `~/.config/rag-eval-dataset/eval.env` 配置 `M3_QA_USER_REFRESH_TOKEN`（推荐）或 `M3_QA_USER_JWT`，以及可选的 `M3_BACKEND_CONTAINER` / `DOCKER_BIN`。token 只在服务端内存与轮换中使用，不返回浏览器。单轮题按服务内规则通常 `rewrite.called=false`、`fallback_reason=gate_skip`；要观察真实改写需在同一会话里连续发 followup / correction 多轮。
