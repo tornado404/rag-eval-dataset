@@ -7,6 +7,7 @@ import { REPO_ROOT, datasetDir, readJsonl, writeJsonl, validateDataset } from '.
 import { normalizeEvaluationRequest, runEvaluation } from './evaluator.mjs';
 
 const PORT = Number(process.env.PORT || 4173);
+const BIND_ADDRESS = process.env.BIND_ADDRESS || '127.0.0.1';
 const VERSION = process.env.DATASET_VERSION || 'v1.4';
 const AUTO_COMMIT = process.env.AUTO_COMMIT !== '0';
 const AUTO_PUSH = process.env.AUTO_PUSH === '1';
@@ -166,8 +167,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Dataset editor: http://127.0.0.1:${PORT}`);
+server.listen(PORT, BIND_ADDRESS, () => {
+  console.log(`Dataset editor listening on ${BIND_ADDRESS}:${PORT}`);
+  if (BIND_ADDRESS !== '0.0.0.0') console.log(`Local URL: http://${BIND_ADDRESS}:${PORT}/`);
   console.log(`Dataset version: ${VERSION}`);
   console.log(`Auto commit: ${AUTO_COMMIT ? 'on' : 'off'} | Auto push: ${AUTO_PUSH ? 'on' : 'off'}`);
   console.log(`Exit: Ctrl+C`);

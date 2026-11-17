@@ -9,9 +9,10 @@
 - 固定一组可复用的问题和事实标注，便于比较不同知识库、检索配置或模型版本的评测结果。
 - 将问题（Case）、原子事实（Fact）、来源证据（Evidence）和预期输出关联起来，便于追溯答案依据。
 - 通过本机网页快速检索、查看和编辑预期答案与标注状态；每次保存都经过数据校验。
+- 通过评测面板调用配置的 Query 改写模型及 M3 只读检索探针或 RAGFlow 原始接口，比较 Top-12 检索结果、Query 漂移和延迟。
 - 从已有的检索评测明细计算 `Recall@K`、`any_hit@K` 和 `strict_hit@K` 汇总指标。
 
-本项目负责维护评测数据和计算汇总指标；它不启动 RAGFlow、不执行检索或生成答案，也不负责把数据自动导入 RAGFlow。`compute_hit.mjs` 读取上游评测程序生成的明细文件。评测结果用于评估系统，不是面向患者的医疗建议。
+本项目负责维护评测数据和评估检索质量，不启动 RAGFlow、不生成问答答案，也不负责把数据自动导入 RAGFlow。`compute_hit.mjs` 读取上游评测程序生成的明细文件。评测结果用于评估系统，不是面向患者的医疗建议。
 
 ## 数据与目录
 
@@ -73,6 +74,7 @@ npm run editor
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `PORT` | `4173` | 本机服务端口 |
+| `BIND_ADDRESS` | `127.0.0.1` | 监听地址；M3 部署设为 `0.0.0.0` 以支持局域网访问 |
 | `DATASET_VERSION` | `v1.4` | 要读取和编辑的 `datasets/<版本>/` 目录 |
 | `AUTO_COMMIT` | `1` | 自动提交；设为 `0` 时仍写入文件，但不自动 commit |
 | `AUTO_PUSH` | `0` | 设为 `1` 时，在自动 commit 后推送当前分支 |
@@ -95,7 +97,7 @@ npm run editor
 
 **自动提交注意事项：**保存前先检查 `git status`。服务会 `git add` 当前版本的 `expected_outputs.jsonl`，随后运行普通 `git commit`；Git 会把暂存区里的其他文件一并提交。不要在暂存区留有不相关的改动。若只想保存文件并自行决定如何提交，可设置 `AUTO_COMMIT=0`。自动推送会把当前分支推到 `origin`，不会自动创建版本标签，也不等同于部署。如果自动推送失败，本地文件和 commit 可能已经生成；先检查工作区和提交记录，再手动处理推送。
 
-服务只绑定 `127.0.0.1`，当前没有登录认证。请仅在本机使用，不要通过反向代理、端口转发或改绑地址将它公开到局域网或互联网。
+本机启动默认绑定 `127.0.0.1`。M3 部署通过 `BIND_ADDRESS=0.0.0.0` 绑定全部网卡并提供局域网地址；服务没有登录认证，局域网访问者可以查看和编辑数据，也可以调用评测接口，因此只在受信任的私有网络使用。
 
 ## 校验数据
 
@@ -105,7 +107,7 @@ npm run validate
 
 校验器会读取根目录 `MANIFEST.json` 中列出的版本，并检查 JSONL 是否可解析、Case 和 Expected Output 是否对应、必需事实 ID 是否存在、Fact 引用的 Evidence 是否存在，以及审核状态和必填字段等约束。它不运行 RAG 检索或答案生成，也不校验版本目录内 `MANIFEST.json` 所列文件的哈希值；冻结发布时需另外复核版本清单。
 
-当前 GitHub Actions 工作流会在 push 和 pull request 时运行同一条校验命令。已跟踪仓库没有自动部署工作流；推送代码本身不会部署或重启编辑器服务。
+GitHub Actions 在 push 和 pull request 时校验数据；`deploy-m3` workflow 在 `main` push 时部署到 M3，也支持手动指定分支、tag 或 SHA 部署。
 
 ## 计算检索指标
 
@@ -140,6 +142,12 @@ node scripts/compute_hit.mjs /path/to/details_mode_a.jsonl --top-k 12 --dataset 
 
 版本标签用于固定一次评测所用的数据快照。更新版本目录、根 manifest 和标签是数据发布流程；更新编辑器代码则需要把仓库代码同步到运行机器并重启服务。
 
+### M3 服务更新
+
+将代码推送到 `main` 会自动触发 M3 部署。也可以在 GitHub Actions 手动运行 `deploy-m3` 并填写要部署的 `ref`。runner 会 checkout 远程代码、校验数据、同步部署目录、重启 launchd 服务并检查健康状态；局域网 URL 会写入 workflow 日志和 Summary。
+
+M3 服务监听端口 `4183`，launchd label 为 `com.tornado404.rag-eval-dataset`。部署后的 LAN 地址由 M3 默认网卡 IPv4 和端口组成，格式为 `http://<M3-LAN-IP>:4183/`。
+
 ### 本机服务更新
 
 在运行服务的终端按 `Ctrl+C`，检查并保留工作区改动，再快进同步代码并重新启动：
@@ -152,7 +160,7 @@ npm run editor
 
 服务不会热更新 Node 代码。
 
-当前版本不包含远程部署脚本、常驻进程配置或远程健康检查。若需在其他机器运行服务，应在目标机器同步代码、确认工作区改动已保留、按该机器的服务管理方式启动或重启 `node editor/server.mjs`；本机编辑器代码不会因 Git push 自动更新。
+本机编辑器代码不会热更新；M3 上的服务由 CI workflow 和 launchd 管理。
 
 ## 版本冻结记录
 
