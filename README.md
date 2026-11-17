@@ -67,7 +67,7 @@ npm run editor
 3. 默认把该文件自动 Git commit；提交信息前缀默认为 `dataset(editor)`。
 4. 只有设置 `AUTO_PUSH=1` 时，才会在提交后执行 `git push origin HEAD`。
 
-页面使用的接口是 `GET /api/state`（载入当前版本）和 `POST /api/save`（保存修改）。浏览器不保存 Git 或其他 token；推送认证由本机 Git 凭据提供。
+页面使用的接口是 `GET /api/state`（载入当前版本）、`POST /api/save`（保存修改）、`GET /api/eval/defaults`（读取不含凭据的评测默认值）和 `POST /api/eval/run`（执行评测）。浏览器不保存 Git 或其他 token；推送认证由本机 Git 凭据提供。
 
 ### 配置
 
@@ -79,6 +79,8 @@ npm run editor
 | `AUTO_COMMIT` | `1` | 自动提交；设为 `0` 时仍写入文件，但不自动 commit |
 | `AUTO_PUSH` | `0` | 设为 `1` 时，在自动 commit 后推送当前分支 |
 | `COMMIT_PREFIX` | `dataset(editor)` | 自动提交信息前缀 |
+| `EVAL_CONFIG_FILE` | `~/.config/rag-eval-dataset/eval.env` | 评测面板的服务端默认配置与凭据文件 |
+| `EVAL_REMOTE_TIMEOUT_MS` | `180000` | 单次上游请求超时（毫秒） |
 
 可以通过当前命令临时设置变量：
 
@@ -94,6 +96,8 @@ source .env
 set +a
 npm run editor
 ```
+
+评测面板的服务端默认配置从 `EVAL_CONFIG_FILE` 读取，默认路径为 `~/.config/rag-eval-dataset/eval.env`；该文件不应进入仓库，建议权限设为 `600`。示例见 `deploy/eval.env.example`。表单中的 Key / Token 留空时由服务端补全；`GET /api/eval/defaults` 只返回“是否已配置”，不会返回凭据值。
 
 **自动提交注意事项：**保存前先检查 `git status`。服务会 `git add` 当前版本的 `expected_outputs.jsonl`，随后运行普通 `git commit`；Git 会把暂存区里的其他文件一并提交。不要在暂存区留有不相关的改动。若只想保存文件并自行决定如何提交，可设置 `AUTO_COMMIT=0`。自动推送会把当前分支推到 `origin`，不会自动创建版本标签，也不等同于部署。如果自动推送失败，本地文件和 commit 可能已经生成；先检查工作区和提交记录，再手动处理推送。
 

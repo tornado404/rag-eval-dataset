@@ -23,6 +23,85 @@ const EDITABLE_FIELDS = [
 ];
 
 const outputsPath = path.join(datasetDir(VERSION), 'expected_outputs.jsonl');
+const EVAL_CONFIG_FILE = process.env.EVAL_CONFIG_FILE || path.join(os.homedir(), '.config', 'rag-eval-dataset', 'eval.env');
+
+function readEnvFile(file) {
+  const values = {};
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return values;
+  }
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const normalized = line.startsWith('export ') ? line.slice(7).trim() : line;
+    const separator = normalized.indexOf('=');
+    if (separator <= 0) continue;
+    const key = normalized.slice(0, separator).trim();
+    let value = normalized.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+const EVAL_FILE_ENV = readEnvFile(EVAL_CONFIG_FILE);
+
+function evalEnv(name) {
+  const value = process.env[name] ?? EVAL_FILE_ENV[name];
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function splitList(value) {
+  return String(value || '').split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function buildEvalDefaults() {
+  const maxCases = Number(evalEnv('EVAL_MAX_CASES') || 0);
+  return {
+    target: evalEnv('EVAL_TARGET') === 'qa-probe' ? 'qa-probe' : 'ragflow',
+    rewriteEndpoint: evalEnv('EVAL_REWRITE_ENDPOINT') || 'http://192.168.31.201:8000/v1/chat/completions',
+    rewriteModel: evalEnv('EVAL_REWRITE_MODEL') || 'Qwen3.6-35B-A3B-4bit',
+    ragflowBaseUrl: evalEnv('RAGFLOW_BASE_URL') || 'http://192.168.31.201:8088',
+    qaBaseUrl: evalEnv('M3_BASE_URL') || 'https://api.nicoyabio.com',
+    datasetIds: splitList(evalEnv('RAGFLOW_DATASET_IDS')),
+    maxCases: Number.isInteger(maxCases) && maxCases >= 0 && maxCases <= 1000 ? maxCases : 0,
+    credentials: {
+      rewriteApiKey: Boolean(evalEnv('EVAL_REWRITE_API_KEY')),
+      ragflowApiKey: Boolean(evalEnv('RAGFLOW_API_KEY')),
+      qaToken: Boolean(evalEnv('M3_ADMIN_TOKEN')),
+    },
+  };
+}
+
+function withServerDefaults(body) {
+  const defaults = buildEvalDefaults();
+  const source = body.config && typeof body.config === 'object' && !Array.isArray(body.config) ? body.config : {};
+  const config = { ...source };
+  config.target = config.target || defaults.target;
+  config.rewriteEndpoint = config.rewriteEndpoint || defaults.rewriteEndpoint;
+  config.rewriteModel = config.rewriteModel || defaults.rewriteModel;
+  config.rewriteApiKey = config.rewriteApiKey || evalEnv('EVAL_REWRITE_API_KEY');
+  if (config.maxCases === undefined || config.maxCases === null || config.maxCases === '') {
+    config.maxCases = defaults.maxCases;
+  }
+  if (config.target === 'ragflow') {
+    config.ragflowBaseUrl = config.ragflowBaseUrl || defaults.ragflowBaseUrl;
+    config.ragflowApiKey = config.ragflowApiKey || evalEnv('RAGFLOW_API_KEY');
+    const datasetIds = Array.isArray(config.datasetIds)
+      ? config.datasetIds.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    config.datasetIds = datasetIds.length ? datasetIds : defaults.datasetIds;
+  } else if (config.target === 'qa-probe') {
+    config.qaBaseUrl = config.qaBaseUrl || defaults.qaBaseUrl;
+    config.qaToken = config.qaToken || evalEnv('M3_ADMIN_TOKEN');
+  }
+  return { ...body, config };
+}
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -90,8 +169,12 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, loadState());
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/eval/defaults') {
+      return send(res, 200, buildEvalDefaults());
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/eval/run') {
-      const body = await safeBody(req);
+      const body = withServerDefaults(await safeBody(req));
       let request;
       try {
         request = normalizeEvaluationRequest(body);
@@ -170,6 +253,9 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, BIND_ADDRESS, () => {
   console.log(`Dataset editor listening on ${BIND_ADDRESS}:${PORT}`);
   if (BIND_ADDRESS !== '0.0.0.0') console.log(`Local URL: http://${BIND_ADDRESS}:${PORT}/`);
+  const defaults = buildEvalDefaults();
+  console.log(`Eval config: ${EVAL_CONFIG_FILE}${Object.keys(EVAL_FILE_ENV).length ? '' : ' (not found)'}`);
+  console.log(`Eval default target: ${defaults.target} | ragflow key: ${defaults.credentials.ragflowApiKey ? 'configured' : 'missing'} | model key: ${defaults.credentials.rewriteApiKey ? 'configured' : 'missing'}`);
   console.log(`Dataset version: ${VERSION}`);
   console.log(`Auto commit: ${AUTO_COMMIT ? 'on' : 'off'} | Auto push: ${AUTO_PUSH ? 'on' : 'off'}`);
   console.log(`Exit: Ctrl+C`);
