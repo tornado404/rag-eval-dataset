@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "/path/to/project"
+        ],
+        "createdAt": "2026-11-17T03:55:25.899Z",
+        "reason": "Agent: intentional data-table grid aligns with its rounded scroll container; th and td provide 10px 12px text inset, so the no-inset finding is a detector false positive"
+      }
+    ]
+  }
+}
