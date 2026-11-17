@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RAGFlow QA 数据集编辑器</title>
+<style>
+:root{--bg:#f5f7fb;--ink:#182230;--muted:#667085;--line:#d8dee9;--brand:#2457d6;--card:#fff;--warn:#b54708}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:1480px;margin:0 auto;padding:28px 22px 64px}h1{font-size:24px;margin:0 0 5px}.sub{color:var(--muted);margin-bottom:18px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.bar input{flex:1;min-width:260px}.bar select,.bar button,input,textarea{border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:#fff;font:inherit}
+button{cursor:pointer;background:#fff}button.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:650}button:disabled{opacity:.5;cursor:not-allowed}
+.stats{color:var(--muted);margin:6px 0 12px}.table-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{width:100%;border-collapse:separate;border-spacing:0;min-width:1180px}th{position:sticky;top:0;z-index:2;background:#eef2f7;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}tr.dirty{background:#fffbeb}
+tr:hover{background:#f8faff}tr.dirty:hover{background:#fff4d6}.q{width:28%;font-weight:600}.a{width:38%}.ids{width:15%;color:var(--muted);font-size:12px;word-break:break-all}.meta{white-space:nowrap}
+.view-answer{white-space:pre-wrap}.editor-only{display:none}body.editing .editor-only{display:block}body.editing .view-answer,body.editing .view-field{display:none}
+textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;gap:6px;align-items:center}.status-dot{width:8px;height:8px;border-radius:50%;background:#d0d5dd;display:inline-block;margin-right:6px}.status-dot.dirty{background:#f79009}
+.msg{padding:10px 12px;border-radius:8px;margin-bottom:12px;display:none}.msg.error{display:block;background:#fef3f2;color:#b42318}.msg.ok{display:block;background:#ecfdf3;color:#067647}
+@media print{body{background:#fff}main{max-width:none;padding:0}.bar,.msg,.cell-actions{display:none}.table-wrap{max-height:none;border:0}table{min-width:0}th{position:static}tr{break-inside:avoid}td{padding:6px 8px;font-size:11px}textarea{display:none}.print-answer{display:block}}
+</style>
+</head>
+<body><main>
+<h1>RAGFlow QA 数据集编辑器</h1>
+<div class="sub">JSONL 是真源；页面只负责编辑。保存到本地后由 server.mjs 校验并自动 Git commit。</div>
+<div class="bar">
+  <label><input id="editmode" type="checkbox" style="width:auto;min-width:0;flex:0"> 编辑模式</label>
+  <span class="sub" style="margin:0">勾选后显示输入框；默认保持一页只读表格。</span>
+</div>
+<div id="msg" class="msg"></div>
+<div class="bar">
+  <input id="search" placeholder="搜索问题、答案、行为或事实 ID">
+  <select id="status"><option value="">全部状态</option><option>draft</option><option>review</option><option>approved</option></select>
+  <select id="behavior"><option value="">全部行为</option></select>
+  <button id="save" class="primary">保存更改</button>
+  <button id="discard">放弃未保存更改</button>
+</div>
+<div class="stats" id="stats">载入中…</div>
+<div class="table-wrap"><table>
+<thead><tr><th>问题</th><th>预设答案 / 预期输出</th><th>检索事实</th><th>状态 / 行为</th><th>评分要点</th><th>操作</th></tr></thead>
+<tbody id="body"></tbody>
+</table></div>
+<script>
+const state={cases:[],facts:[],evidences:[],expected_outputs:[]};
+let original=new Map(),dirty=new Set(),debounce=null;
+const q=id=>document.getElementById(id), body=q('body'), msg=q('msg');
+const factText=new Map();
+function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
+function idsText(v){return Array.isArray(v)?v.join(', '):''}
+function parseIds(v){return v.split(/[,，\s]+/).map(s=>s.trim()).filter(Boolean)}
+function answerFor(row){return row.expected_behavior==='answer'?idsText((row.required_fact_ids||[]).map(id=>factText.get(id)||id)):row.answer_text}
+function showMsg(text,type='ok'){msg.className='msg '+type;msg.textContent=text}
+function render(){
+  const text=q('search').value.trim().toLowerCase(),status=q('status').value,behavior=q('behavior').value;
+  const outputs=state.expected_outputs.map(out=>({...out,case:state.cases.find(c=>c.case_id===out.case_id)||{}}));
+  const list=outputs.filter(r=>(!status||r.status===status)&&(!behavior||r.expected_behavior===behavior)&&(!text||[r.case.question,r.answer_text,r.expected_behavior,idsText(r.required_fact_ids)].join(' ').toLowerCase().includes(text)));
+  q('stats').textContent=`显示 ${list.length} / ${outputs.length} 条；未保存 ${dirty.size} 条`;
+  body.innerHTML=list.length?list.map(r=>{
+    const isDirty=dirty.has(r.case_id);
+    return `<tr data-id="${esc(r.case_id)}" class="${isDirty?'dirty':''}">
+      <td class="q">${esc(r.case.question)}</td>
+      <td class="a"><div class="view-answer">${esc(answerFor(r))}</div><textarea class="editor-only" data-field="answer_text">${esc(r.answer_text)}</textarea><div class="print-answer">${esc(answerFor(r))}</div></td>
+      <td class="ids">必需：${esc(idsText(r.required_fact_ids))}<br>禁止：${esc(idsText(r.forbidden_fact_ids) || '—')}</td>
+      <td class="meta"><span class="status-dot ${isDirty?'dirty':''}"></span><span class="view-field">${esc(r.status)} / ${esc(r.expected_behavior)}</span><select class="editor-only" data-field="status">${['draft','review','approved'].map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select><br><select class="editor-only" data-field="expected_behavior">${[...new Set(state.cases.map(c=>c.expected_behavior))].map(s=>`<option ${s===r.expected_behavior?'selected':''}>${esc(s)}</option>`).join('')}</select></td>
+      <td class="ids">${esc(idsText(r.rubric))}</td>
+      <td><div class="cell-actions editor-only"><button data-action="reset" class="reset" ${isDirty?'':'disabled'}>重置</button></div></td>
+    </tr>`}).join(''):'<tr><td colspan="6" class="empty">没有匹配的题目</td></tr>';
+}
+function markDirty(caseId){dirty.add(caseId);render()}
+function patch(row,field,value){
+  if(field==='required_fact_ids'||field==='forbidden_fact_ids'||field==='rubric')row[field]=parseIds(value);
+  else row[field]=value;
+  markDirty(row.case_id);
+}
+body.addEventListener('input',e=>{
+  const cell=e.target.closest('td');if(!cell)return;
+  const tr=e.target.closest('tr');const row=state.expected_outputs.find(r=>r.case_id===tr.dataset.id);
+  if(e.target.tagName==='TEXTAREA'&&e.target.dataset.field){clearTimeout(debounce);debounce=setTimeout(()=>patch(row,e.target.dataset.field,e.target.value),180)}
+});
+body.addEventListener('change',e=>{
+  const tr=e.target.closest('tr');if(!tr||!e.target.dataset.field)return;
+  const row=state.expected_outputs.find(r=>r.case_id===tr.dataset.id);patch(row,e.target.dataset.field,e.target.value);
+});
+body.addEventListener('click',e=>{
+  if(e.target.dataset.action!=='reset')return;
+  const tr=e.target.closest('tr'),caseId=tr.dataset.id,prev=original.get(caseId);
+  Object.assign(state.expected_outputs.find(r=>r.case_id===caseId),structuredClone(prev));dirty.delete(caseId);render();
+});
+for(const id of ['search','status','behavior'])q(id).addEventListener(id==='search'?'input':'change',render);
+q('editmode').addEventListener('change',e=>{document.body.classList.toggle('editing',e.target.checked);render()});
+q('discard').addEventListener('click',()=>{
+  if(dirty.size&&!confirm(`放弃 ${dirty.size} 条未保存更改？`))return;
+  for(const row of state.expected_outputs)Object.assign(row,structuredClone(original.get(row.case_id)));
+  dirty.clear();render();
+});
+q('save').addEventListener('click',async()=>{
+  const rows=[...dirty].map(id=>state.expected_outputs.find(r=>r.case_id===id));
+  if(!rows.length){showMsg('没有需要保存的更改');return}
+  q('save').disabled=true;
+  try{
+    const res=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows})});
+    const data=await res.json();if(!res.ok)throw new Error(data.error||data.errors?.join('; ')||'保存失败');
+    for(const row of rows)original.set(row.case_id,structuredClone(row));dirty.clear();render();
+    showMsg(`已保存 ${data.saved} 条${data.commit?`；commit ${data.commit}`:''}`);
+  }catch(err){showMsg(err.message,'error')}finally{q('save').disabled=false}
+});
+async function load(){
+  try{
+    const res=await fetch('/api/state');if(!res.ok)throw new Error('无法载入数据');
+    Object.assign(state,await res.json());
+    for(const fact of state.facts)factText.set(fact.fact_id,fact.fact);
+    original=new Map(state.expected_outputs.map(r=>[r.case_id,structuredClone(r)]));
+    for(const label of [...new Set(state.cases.map(c=>c.expected_behavior))].sort())q('behavior').add(new Option(label,label));
+    render();
+  }catch(err){showMsg(err.message,'error')}
+}
+load();
+</script>
+</main></body></html>

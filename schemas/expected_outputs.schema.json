@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExpectedOutputs",
+  "type": "object",
+  "required": [
+    "case_id",
+    "answer_text",
+    "expected_behavior",
+    "required_fact_ids",
+    "forbidden_fact_ids",
+    "rubric",
+    "status",
+    "reviewer",
+    "updated_at"
+  ],
+  "properties": {
+    "case_id": { "type": "string", "pattern": "^C[0-9]{5}$" },
+    "answer_text": { "type": "string" },
+    "expected_behavior": { "type": "string" },
+    "required_fact_ids": { "type": "array", "items": { "type": "string" } },
+    "forbidden_fact_ids": { "type": "array", "items": { "type": "string" } },
+    "rubric": { "type": "array", "items": { "type": "string" } },
+    "status": { "enum": ["draft", "review", "approved"] },
+    "reviewer": { "type": "string" },
+    "updated_at": { "type": "string" }
+  },
+  "additionalProperties": false
+}
