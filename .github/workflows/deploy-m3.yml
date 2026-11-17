@@ -36,10 +36,6 @@ jobs:
         with:
           ref: ${{ steps.ref.outputs.value }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - name: Deploy to M3
         shell: bash
         run: bash deploy/deploy-m3.sh
