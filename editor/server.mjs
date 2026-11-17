@@ -24,7 +24,11 @@ const outputsPath = path.join(datasetDir(VERSION), 'expected_outputs.jsonl');
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
-  res.end(typeof body === 'string' ? body : JSON.stringify(body));
+  if (typeof body === 'string' || Buffer.isBuffer(body)) {
+    res.end(body);
+  } else {
+    res.end(JSON.stringify(body));
+  }
 }
 
 function safeBody(req) {
