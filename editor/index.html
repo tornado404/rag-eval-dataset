@@ -18,8 +18,9 @@ tr:hover{background:#f8faff}tr.dirty:hover{background:#fff4d6}.q{width:28%;font-
 textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;gap:6px;align-items:center}.status-dot{width:8px;height:8px;border-radius:50%;background:#d0d5dd;display:inline-block;margin-right:6px}.status-dot.dirty{background:#f79009}
 .msg{padding:10px 12px;border-radius:8px;margin-bottom:12px;display:none}.msg.error{display:block;background:#fef3f2;color:#b42318}.msg.ok{display:block;background:#ecfdf3;color:#067647}
 .eval-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;margin:0 0 16px;box-shadow:0 1px 2px #1018280a}.eval-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eval-head h2{font-size:18px;margin:0 0 4px}.eval-note{color:var(--muted);font-size:13px;margin:0 0 14px}.eval-config{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:10px 14px;margin:14px 0}.eval-field{display:flex;flex-direction:column;gap:5px;font-weight:600}.eval-field input,.eval-field select{width:100%;min-width:0}.eval-field small{font-weight:400;color:var(--muted)}.eval-target-config{display:contents}.eval-target-config[hidden]{display:none}.eval-datasets{display:flex;gap:8px 14px;flex-wrap:wrap;margin:6px 0 12px}.eval-datasets label{font-weight:400;display:inline-flex;gap:5px;align-items:center}.eval-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}.eval-actions button{padding:9px 12px}.eval-progress{display:flex;align-items:center;gap:10px;color:var(--muted);margin-top:12px}.eval-progress[hidden]{display:none}.eval-progress progress{width:min(420px,55vw);height:10px}.eval-results{margin-top:16px}.eval-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.eval-metric-card{border:1px solid var(--line);border-radius:9px;padding:12px}.eval-metric-card h3{font-size:14px;margin:0 0 8px}.eval-metric-card dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0}.eval-metric-card dt{color:var(--muted)}.eval-metric-card dd{margin:0;font-variant-numeric:tabular-nums;font-weight:650}.eval-details{overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px}.eval-details table{min-width:1050px;font-size:12px}.eval-details th{position:static}.eval-details td{padding:7px 9px}.eval-query{max-width:340px;white-space:pre-wrap;word-break:break-word}.eval-status{font-weight:650}.eval-status.drift{color:#b42318}.eval-status.ok{color:#067647}.eval-status.unavailable{color:var(--warn)}.eval-muted{color:var(--muted)}
+.eval-profile-tools{display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(180px,1fr) auto auto;gap:10px;align-items:end;margin:14px 0 10px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.eval-profile-tools>button{min-height:40px;padding:9px 12px}.eval-profile-status,.eval-profile-note{grid-column:1/-1;margin:0;font-size:12px;color:#596579}.eval-profile-status{font-weight:600}.eval-ragflow-address{gap:7px}
 button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button.primary:hover:not(:disabled){background:#1947bd;border-color:#1947bd}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #84adff;outline-offset:2px}.eval-field small,.eval-note,.eval-muted{color:#596579}
-@media(max-width:760px){main{padding:18px 14px 48px}.eval-config{grid-template-columns:1fr}.eval-head{display:block}.eval-head strong{display:block;margin-top:6px}.eval-target-config .eval-field[style]{grid-column:auto!important}.eval-actions button{flex:1 1 180px}.eval-progress{align-items:flex-start;flex-direction:column}.eval-progress progress{width:100%}}
+@media(max-width:760px){main{padding:18px 14px 48px}.eval-config,.eval-profile-tools{grid-template-columns:1fr}.eval-head{display:block}.eval-head strong{display:block;margin-top:6px}.eval-target-config .eval-field[style]{grid-column:auto!important}.eval-profile-tools>button{width:100%}.eval-actions button{flex:1 1 180px}.eval-progress{align-items:flex-start;flex-direction:column}.eval-progress progress{width:100%}}
 @media print{body{background:#fff}main{max-width:none;padding:0}.bar,.msg,.cell-actions{display:none}.table-wrap{max-height:none;border:0}table{min-width:0}th{position:static}tr{break-inside:avoid}td{padding:6px 8px;font-size:11px}textarea{display:none}.print-answer{display:block}}
 </style>
 </head>
@@ -35,20 +36,37 @@ button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button
     <div><h2 id="eval-title">M3 RAGFlow 检索评测</h2><p class="eval-note">按 v1.4 Gold Fact 与 OR / AND 证据组计算 Top-12 覆盖；改写路径延迟包含 Query 生成和检索，不含答案生成。</p></div>
     <strong id="eval-case-count" class="eval-muted">载入中…</strong>
   </div>
-  <div class="eval-config">
+  <div class="eval-profile-tools" aria-label="浏览器本地评测配置方案">
+    <label class="eval-field">已保存方案
+      <select id="eval-profile-select"><option value="">临时配置（不保存）</option></select>
+    </label>
+    <label class="eval-field">方案名称
+      <input id="eval-profile-name" maxlength="60" placeholder="例如：M3 本地 RAGFlow + Qwen" autocomplete="off">
+    </label>
+    <button type="button" id="eval-profile-save" class="primary">保存 / 更新方案</button>
+    <button type="button" id="eval-profile-delete" disabled>删除方案</button>
+    <p id="eval-profile-status" class="eval-profile-status" role="status" aria-live="polite">临时配置（未保存）</p>
+    <p class="eval-profile-note">方案（包括 API Key 和 Token）保存在当前浏览器此网站的 localStorage 中，浏览器本地可读取；不会写入数据集或仓库。运行评测时凭据会发送给当前评测服务。不同设备或浏览器需分别保存。</p>
+  </div>
+  <div class="eval-config" id="eval-config">
     <label class="eval-field">检索目标
       <select id="eval-target"><option value="qa-probe">M3 AI 服务只读检索探针</option><option value="ragflow">RAGFlow 原始 Top-12</option></select>
       <small id="eval-target-note">只读探针复用服务端融合检索，不写问答记录；需 M3 开启 AI_DEBUG_TOOLS_ENABLED，且 APP_ENV 为 dev/test/local。</small>
     </label>
+    <label class="eval-field">模型 API 预设
+      <select id="rewrite-preset"><option value="">自定义</option><option value="m3-qwen" selected>M3 · Qwen3.6-35B-A3B-4bit</option></select>
+      <small>M3 管理页：http://192.168.31.201:8000/admin/dashboard；此预设调用 /v1/chat/completions，API Key 单独填写。</small>
+    </label>
     <label class="eval-field">Query 改写模型 API 地址
-      <input id="rewrite-endpoint" type="url" placeholder="https://模型服务/v1/chat/completions" autocomplete="off">
+      <input id="rewrite-endpoint" type="url" value="http://192.168.31.201:8000/v1/chat/completions" placeholder="https://模型服务/v1/chat/completions" autocomplete="url">
       <small>OpenAI 兼容 Chat Completions 完整地址；本工具单独触发改写，建议使用与 M3 相同的模型配置。只测漂移时无需检索服务凭据。</small>
     </label>
     <label class="eval-field">模型名称
-      <input id="rewrite-model" placeholder="例如：当前服务使用的模型名" autocomplete="off">
+      <input id="rewrite-model" value="Qwen3.6-35B-A3B-4bit" placeholder="例如：当前服务使用的模型名" autocomplete="off">
     </label>
-    <label class="eval-field">模型 API Key（可选）
-      <input id="rewrite-api-key" type="password" autocomplete="new-password" placeholder="本次运行使用，不会保存">
+    <label class="eval-field">模型 API Key（Bearer）
+      <input id="rewrite-api-key" type="password" autocomplete="new-password" placeholder="输入模型服务 API Key；保存方案后存于浏览器">
+      <small>按 Bearer Token 发送；需在当前浏览器手动填写。</small>
     </label>
     <div class="eval-target-config" data-target="qa-probe">
       <label class="eval-field">M3 API 根地址
@@ -59,8 +77,14 @@ button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button
       </label>
     </div>
     <div class="eval-target-config" data-target="ragflow" hidden>
-      <label class="eval-field">RAGFlow API 根地址
-        <input id="ragflow-base-url" type="url" placeholder="https://ragflow.example.com" autocomplete="url">
+      <label class="eval-field eval-ragflow-address">RAGFlow API 根地址
+        <select id="ragflow-base-preset" aria-label="选择 RAGFlow API 地址预设">
+          <option value="">自定义地址</option>
+          <option value="http://192.168.31.201:8088/">本地 · 192.168.31.201:8088</option>
+          <option value="https://ragflow.dozoyen.com/">公网 · ragflow.dozoyen.com</option>
+        </select>
+        <input id="ragflow-base-url" type="url" placeholder="选择预设，或输入自定义地址" autocomplete="url">
+        <small>选择预设会填入输入框，地址仍可编辑。</small>
       </label>
       <label class="eval-field">RAGFlow API Key
         <input id="ragflow-api-key" type="password" autocomplete="new-password" placeholder="仅用于本次运行，不会保存">
@@ -104,6 +128,13 @@ const state={cases:[],facts:[],evidences:[],fact_evidence_relations:[],datasets:
 let original=new Map(),dirty=new Set(),debounce=null,activeEvalController=null,lastEvalReport=null;
 const q=id=>document.getElementById(id), body=q('body'), msg=q('msg');
 const factText=new Map();
+const EVAL_PROFILE_STORAGE_KEY='rag-eval-editor-profiles:v1';
+const MODEL_PRESET={id:'m3-qwen',endpoint:'http://192.168.31.201:8000/v1/chat/completions',model:'Qwen3.6-35B-A3B-4bit'};
+const RAGFLOW_BASE_PRESETS=[
+  {url:'http://192.168.31.201:8088/',label:'本地 RAGFlow'},
+  {url:'https://ragflow.dozoyen.com/',label:'公网 RAGFlow'},
+];
+let evalProfiles=[],activeEvalProfileId='',evalProfileSnapshot=null,evalProfileStorageReady=true;
 function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 function idsText(v){return Array.isArray(v)?v.join(', '):''}
 function parseIds(v){return v.split(/[,，\s]+/).map(s=>s.trim()).filter(Boolean)}
@@ -169,6 +200,131 @@ function goldText(gold){return gold&&gold.scorable_fact_count?`${gold.hit_fact_c
 function renderDatasetOptions(){
   const host=q('eval-datasets');
   host.innerHTML=state.datasets.map(ds=>`<label><input type="checkbox" data-dataset-id="${esc(ds.dataset_id)}" checked> ${esc(ds.dataset_id)} · ${esc(ds.dataset_name)} <span class="eval-muted">(${esc(ds.ragflow_dataset_id)})</span></label>`).join('');
+}
+function normalizedPresetUrl(value){return String(value||'').trim().replace(/\/+$/,'')}
+function syncModelPreset(){
+  const matches=normalizedPresetUrl(q('rewrite-endpoint').value)===normalizedPresetUrl(MODEL_PRESET.endpoint)&&q('rewrite-model').value.trim()===MODEL_PRESET.model;
+  q('rewrite-preset').value=matches?MODEL_PRESET.id:'';
+}
+function syncRagflowPreset(){
+  const current=normalizedPresetUrl(q('ragflow-base-url').value);
+  const match=RAGFLOW_BASE_PRESETS.find(preset=>normalizedPresetUrl(preset.url)===current);
+  q('ragflow-base-preset').value=match?.url||'';
+}
+function captureEvalForm(){
+  return {
+    target:q('eval-target').value,
+    rewriteEndpoint:q('rewrite-endpoint').value,
+    rewriteModel:q('rewrite-model').value,
+    rewriteApiKey:q('rewrite-api-key').value,
+    qaBaseUrl:q('qa-base-url').value,
+    qaToken:q('qa-token').value,
+    ragflowBaseUrl:q('ragflow-base-url').value,
+    ragflowApiKey:q('ragflow-api-key').value,
+    datasetIds:[...document.querySelectorAll('#eval-datasets input:checked')].map(input=>input.dataset.datasetId),
+    maxCases:q('eval-max-cases').value,
+  };
+}
+function evalFormSnapshot(){return JSON.stringify(captureEvalForm())}
+function refreshEvalProfileStatus(message){
+  const status=q('eval-profile-status');
+  const active=evalProfiles.find(profile=>profile.id===activeEvalProfileId);
+  q('eval-profile-delete').disabled=!active;
+  if(message){status.textContent=message;return}
+  if(!evalProfileStorageReady){status.textContent='无法读取浏览器配置存储；为避免覆盖现有数据，暂不能保存或切换方案。';return}
+  const changed=evalProfileSnapshot!==null&&evalFormSnapshot()!==evalProfileSnapshot;
+  if(active)status.textContent=changed?`方案“${active.name}”有未保存修改；保存 / 更新方案以保留。`:`当前方案：${active.name}`;
+  else status.textContent=changed?'临时配置有未保存修改；保存后可在此浏览器切换。':'临时配置（未保存）';
+}
+function renderEvalProfiles(){
+  const select=q('eval-profile-select');
+  select.replaceChildren(new Option('临时配置（不保存）',''));
+  for(const profile of evalProfiles)select.add(new Option(profile.name,profile.id));
+  select.value=activeEvalProfileId;
+  q('eval-profile-delete').disabled=!activeEvalProfileId;
+}
+function applyEvalProfile(config){
+  q('eval-target').value=config.target==='ragflow'?'ragflow':'qa-probe';
+  q('rewrite-endpoint').value=String(config.rewriteEndpoint||'');
+  q('rewrite-model').value=String(config.rewriteModel||'');
+  q('rewrite-api-key').value=String(config.rewriteApiKey||'');
+  q('qa-base-url').value=String(config.qaBaseUrl||'');
+  q('qa-token').value=String(config.qaToken||'');
+  q('ragflow-base-url').value=String(config.ragflowBaseUrl||'');
+  q('ragflow-api-key').value=String(config.ragflowApiKey||'');
+  q('eval-max-cases').value=String(config.maxCases??'0');
+  const selected=new Set(Array.isArray(config.datasetIds)?config.datasetIds.map(String):[]);
+  document.querySelectorAll('#eval-datasets input').forEach(input=>{input.checked=selected.has(input.dataset.datasetId)});
+  syncModelPreset();syncRagflowPreset();renderEvalTarget();
+}
+function readEvalProfileStore(){
+  const raw=localStorage.getItem(EVAL_PROFILE_STORAGE_KEY);
+  if(!raw)return {version:1,activeId:'',profiles:[]};
+  const store=JSON.parse(raw);
+  if(store?.version!==1||!Array.isArray(store.profiles)||typeof store.activeId!=='string')throw new Error('浏览器配置数据格式不正确');
+  const profiles=store.profiles.filter(profile=>profile&&typeof profile.id==='string'&&typeof profile.name==='string'&&profile.name.trim()&&profile.config&&typeof profile.config==='object');
+  return {version:1,activeId:store.activeId,profiles};
+}
+function persistEvalProfileStore(activeId,profiles=evalProfiles){
+  if(!evalProfileStorageReady)return false;
+  try{
+    localStorage.setItem(EVAL_PROFILE_STORAGE_KEY,JSON.stringify({version:1,activeId:activeId||'',profiles}));
+    return true;
+  }catch{
+    refreshEvalProfileStatus('浏览器存储失败或空间不足；本次更改尚未持久保存。');
+    return false;
+  }
+}
+function initializeEvalProfiles(){
+  syncModelPreset();syncRagflowPreset();
+  try{
+    const store=readEvalProfileStore();evalProfiles=store.profiles;
+    const active=evalProfiles.find(profile=>profile.id===store.activeId);
+    if(active){
+      activeEvalProfileId=active.id;q('eval-profile-name').value=active.name;
+      applyEvalProfile(active.config);evalProfileSnapshot=evalFormSnapshot();
+    }else{activeEvalProfileId='';evalProfileSnapshot=evalFormSnapshot()}
+    renderEvalProfiles();refreshEvalProfileStatus();
+  }catch(error){
+    evalProfileStorageReady=false;activeEvalProfileId='';evalProfileSnapshot=evalFormSnapshot();
+    renderEvalProfiles();refreshEvalProfileStatus(`读取浏览器方案失败：${error.message}`);
+  }
+}
+function saveEvalProfile(){
+  if(!evalProfileStorageReady){refreshEvalProfileStatus();return}
+  const name=q('eval-profile-name').value.trim();
+  if(!name){refreshEvalProfileStatus('请先填写方案名称。');q('eval-profile-name').focus();return}
+  const config=captureEvalForm();
+  const namedProfile=evalProfiles.find(profile=>profile.name.toLocaleLowerCase()===name.toLocaleLowerCase());
+  const id=activeEvalProfileId||namedProfile?.id||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
+  const nextProfiles=evalProfiles.filter(profile=>profile.id!==id&&profile.name.toLocaleLowerCase()!==name.toLocaleLowerCase());
+  nextProfiles.push({id,name,config});
+  if(!persistEvalProfileStore(id,nextProfiles))return;
+  evalProfiles=nextProfiles;activeEvalProfileId=id;evalProfileSnapshot=JSON.stringify(config);
+  q('eval-profile-name').value=name;renderEvalProfiles();refreshEvalProfileStatus(`已保存方案：${name}`);
+}
+function selectEvalProfile(){
+  const nextId=q('eval-profile-select').value;
+  if(nextId===activeEvalProfileId)return;
+  const next=evalProfiles.find(profile=>profile.id===nextId);
+  const hasChanges=evalProfileSnapshot!==null&&evalFormSnapshot()!==evalProfileSnapshot;
+  if(next&&hasChanges&&!confirm('切换方案会替换当前表单配置。仍要继续吗？')){q('eval-profile-select').value=activeEvalProfileId;return}
+  if(next){
+    applyEvalProfile(next.config);activeEvalProfileId=next.id;q('eval-profile-name').value=next.name;
+  }else{
+    activeEvalProfileId='';q('eval-profile-name').value='';
+  }
+  evalProfileSnapshot=evalFormSnapshot();renderEvalProfiles();
+  const persisted=persistEvalProfileStore(activeEvalProfileId);
+  refreshEvalProfileStatus(persisted?undefined:'当前表单已切换；浏览器未能记住所选方案。');
+}
+function deleteEvalProfile(){
+  const profile=evalProfiles.find(item=>item.id===activeEvalProfileId);
+  if(!profile||!confirm(`删除浏览器方案“${profile.name}”？`))return;
+  const nextProfiles=evalProfiles.filter(item=>item.id!==profile.id);
+  if(!persistEvalProfileStore('',nextProfiles))return;
+  evalProfiles=nextProfiles;activeEvalProfileId='';evalProfileSnapshot=evalFormSnapshot();
+  q('eval-profile-name').value='';renderEvalProfiles();refreshEvalProfileStatus(`已删除方案：${profile.name}`);
 }
 function renderEvalTarget(){
   const target=q('eval-target').value;
@@ -280,7 +436,24 @@ async function runEvaluation(mode){
     q('eval-cancel').hidden=true;
   }
 }
-q('eval-target').addEventListener('change',renderEvalTarget);
+q('eval-config').addEventListener('input',event=>{
+  if(['rewrite-endpoint','rewrite-model'].includes(event.target.id))syncModelPreset();
+  if(event.target.id==='ragflow-base-url')syncRagflowPreset();
+  refreshEvalProfileStatus();
+});
+q('eval-config').addEventListener('change',event=>{
+  if(event.target.id==='rewrite-preset'&&event.target.value===MODEL_PRESET.id){
+    q('rewrite-endpoint').value=MODEL_PRESET.endpoint;q('rewrite-model').value=MODEL_PRESET.model;
+  }
+  if(event.target.id==='ragflow-base-preset'&&event.target.value)q('ragflow-base-url').value=event.target.value;
+  if(event.target.id==='eval-target')renderEvalTarget();
+  if(['rewrite-endpoint','rewrite-model'].includes(event.target.id))syncModelPreset();
+  if(event.target.id==='ragflow-base-url')syncRagflowPreset();
+  refreshEvalProfileStatus();
+});
+q('eval-profile-select').addEventListener('change',selectEvalProfile);
+q('eval-profile-save').addEventListener('click',saveEvalProfile);
+q('eval-profile-delete').addEventListener('click',deleteEvalProfile);
 q('eval-actions').addEventListener('click',event=>{
   const button=event.target.closest('button');if(!button)return;
   if(button.id==='eval-cancel'){activeEvalController?.abort();return}
@@ -297,7 +470,7 @@ async function load(){
     for(const fact of state.facts)factText.set(fact.fact_id,fact.fact);
     original=new Map(state.expected_outputs.map(r=>[r.case_id,structuredClone(r)]));
     for(const label of [...new Set(state.cases.map(c=>c.expected_behavior))].sort())q('behavior').add(new Option(label,label));
-    renderDatasetOptions();renderEvalTarget();
+    renderDatasetOptions();initializeEvalProfiles();renderEvalTarget();
     const answerCases=state.expected_outputs.filter(row=>row.expected_behavior==='answer'&&(row.required_fact_ids||[]).length>0).length;
     q('eval-case-count').textContent=`${answerCases} 道 Gold 题`;
     render();
