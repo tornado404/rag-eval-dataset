@@ -9,7 +9,12 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64, office]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm run validate
+      - name: Validate dataset
+        shell: bash
+        run: |
+          NODE_BIN="/path/to/project"
+          if [[ -x "$NODE_BIN" ]]; then
+            "$NODE_BIN" scripts/validate.mjs
+          else
+            npm run validate
+          fi
