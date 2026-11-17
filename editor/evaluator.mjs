@@ -791,7 +791,7 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
 
   return {
     run_id: randomUUID(),
-    dataset_version: process.env.DATASET_VERSION || 'v1.4',
+    dataset_version: process.env.DATASET_VERSION || 'v1.5',
     target: 'ai-qa',
     target_config: {
       qa_base_url: config.qaBaseUrl,
@@ -949,7 +949,7 @@ export async function runEvaluation(dataset, request, { signal, onProgress = () 
   const rewriteLatencies = records.map((row) => row.rewrite_latency_ms).filter(Number.isFinite);
   return {
     run_id: randomUUID(),
-    dataset_version: process.env.DATASET_VERSION || 'v1.4',
+    dataset_version: process.env.DATASET_VERSION || 'v1.5',
     top_k: TOP_K,
     target: config.target,
     target_config: {

@@ -65,7 +65,7 @@ cat > "$PLIST" <<PLISTEOF
   <dict>
     <key>PORT</key><string>$PORT</string>
     <key>BIND_ADDRESS</key><string>0.0.0.0</string>
-    <key>DATASET_VERSION</key><string>v1.4</string>
+    <key>DATASET_VERSION</key><string>v1.5</string>
     <key>AUTO_COMMIT</key><string>0</string>
     <key>AUTO_PUSH</key><string>0</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>

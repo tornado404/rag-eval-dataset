@@ -1,0 +1,95 @@
+{
+  "version": "v1.5.0",
+  "kind": "qwen-target-mapping",
+  "generated_at": "2026-11-17T16:05:48.104Z",
+  "base_version": "v1.4.0",
+  "source_version": "v1.4",
+  "target_environment": {
+    "backend": "M3",
+    "api_base_url": "https://api.nicoyabio.com",
+    "qa_endpoint": "/api/v1/qa/turns",
+    "deliver": "auto"
+  },
+  "files": {
+    "cases.jsonl": {
+      "sha256": "3f664239e05aad1bd5fb7852318798f458c6d36f56cfb903f879427f70c61358",
+      "bytes": 72966
+    },
+    "facts.jsonl": {
+      "sha256": "c7dac998d28bdb9318f61810e7a5b4feff971dc4ac6c3a3480d6d6d96e47f745",
+      "bytes": 175457
+    },
+    "evidences.jsonl": {
+      "sha256": "fa893bde310397a99357010809fd5d3b210e16bafe881499c49bbe71238aa3ba",
+      "bytes": 276442
+    },
+    "fact_evidence_relations.jsonl": {
+      "sha256": "11a635b97496048e618685e39aa3490fa4f6f1db1d91fdd287738f6feb6a4af9",
+      "bytes": 40787
+    },
+    "expected_outputs.jsonl": {
+      "sha256": "45ba74f73e943d5776d95b78964c5c44320f688530b8d0118b14c481df0788aa",
+      "bytes": 100608
+    },
+    "datasets.jsonl": {
+      "sha256": "76ea1d2fd534f48f1a0e32dcc4f3b38da4fab32ed788428d0a6e3051149e3efd",
+      "bytes": 2682
+    },
+    "mapping_report.json": {
+      "sha256": "d10e230630490a07f3c5e0c41dc6154ba0772c07f933027c06c760f353d530e2",
+      "bytes": 3266
+    }
+  },
+  "summary": {
+    "evidences": 482,
+    "mapped": 479,
+    "unmapped": 3,
+    "mapped_with_multiple_chunks": 54,
+    "unique_target_chunks": 314,
+    "methods": {
+      "chunk_exact": 432,
+      "unmapped": 3,
+      "source_fuzzy_page": 17,
+      "source_contains": 30
+    },
+    "datasets": {
+      "DS01": {
+        "total": 133,
+        "mapped": 130,
+        "unmapped": 3,
+        "mapped_with_multiple_chunks": 0,
+        "methods": {
+          "chunk_exact": 124,
+          "unmapped": 3,
+          "source_contains": 6
+        }
+      },
+      "DS02": {
+        "total": 197,
+        "mapped": 197,
+        "unmapped": 0,
+        "mapped_with_multiple_chunks": 53,
+        "methods": {
+          "chunk_exact": 166,
+          "source_fuzzy_page": 17,
+          "source_contains": 14
+        }
+      },
+      "DS03": {
+        "total": 152,
+        "mapped": 152,
+        "unmapped": 0,
+        "mapped_with_multiple_chunks": 1,
+        "methods": {
+          "chunk_exact": 142,
+          "source_contains": 10
+        }
+      }
+    }
+  },
+  "unmapped_evidence_ids": [
+    "E00096",
+    "E00097",
+    "E00466"
+  ]
+}
