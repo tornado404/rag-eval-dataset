@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "RAGFlow evaluation dataset",
+  "purpose": "Editable, git-tracked QA dataset for repeated Recall@12 and HIT evaluation.",
+  "source": {
+    "repository": "ai-support-platform",
+    "path": "docs/eval/knowledge-map/v1.4",
+    "tag": "[REDACTED]"
+  },
+  "current_version": "v1.4",
+  "versions": [
+    {
+      "id": "v1.4",
+      "status": "frozen-import",
+      "case_count": 163,
+      "files": [
+        "datasets/v1.4/cases.jsonl",
+        "datasets/v1.4/facts.jsonl",
+        "datasets/v1.4/evidences.jsonl",
+        "datasets/v1.4/fact_evidence_relations.jsonl",
+        "datasets/v1.4/expected_outputs.jsonl"
+      ]
+    }
+  ],
+  "metrics": {
+    "recall_at_k": "covered required facts / total required facts, macro averaged over answer cases",
+    "any_hit_at_k": "fraction of answer cases with at least one required fact covered",
+    "strict_hit_at_k": "fraction of answer cases with all required facts covered"
+  }
+}
