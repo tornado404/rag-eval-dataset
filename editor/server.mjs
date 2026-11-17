@@ -101,7 +101,12 @@ const server = http.createServer(async (req, res) => {
         }
         previous.updated_at = new Date().toISOString();
       }
-      const errors = validateDataset({ ...state, expected_outputs: state.expected_outputs });
+      const factEvidenceRelationsPath = path.join(datasetDir(VERSION), 'fact_evidence_relations.jsonl');
+      const errors = validateDataset({
+        ...state,
+        expected_outputs: state.expected_outputs,
+        fact_evidence_relations: readJsonl(factEvidenceRelationsPath),
+      });
       if (errors.length) return send(res, 422, { error: 'validation failed', errors: errors.slice(0, 50) });
       writeJsonl(outputsPath, state.expected_outputs);
       const commit = commitAndMaybePush(state.expected_outputs);
