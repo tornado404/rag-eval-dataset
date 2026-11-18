@@ -22,8 +22,9 @@
 
 页面“检索目标”选 **M3 AI 问答真实链路** 时，服务会真实调用 `POST [REDACTED]`（`deliver=auto`），完整经过 Decision 路由、Query 改写门禁和最终证据装配，再用 `docker logs` 读取后端 `qa: turn_observation` 打分：
 
-- 最终证据池：`final_grounding_chunks`，`Recall@K` 的 K 取 `final_grounding_count`。
-- 检索层：`ragflow_candidate_chunk_ids_at_12`，即 merge 前的 RAGFlow 专业库 Top-12，对应 `Recall@12 / Hit@12`。
+- 最终证据池：优先使用 v2 `final_grounding[].chunk_id`，兼容旧字段 `final_grounding_chunks`；`Recall@K` 的 K 取该题最终 chunk 数。
+- 检索层：优先使用 v2 `ragflow_candidates_at_12[].chunk_id`，兼容旧字段 `ragflow_candidate_chunk_ids_at_12`；这是 merge 前的 RAGFlow 专业库 Top-12，对应 `Recall@12 / Hit@12`。
+- `document_id` / `evidence_id` 不能当作 chunk ID 参与 Gold 匹配；旧版 observation 缺少任何 chunk 级字段时标记为 `legacy_schema_unscorable`，不进入 Recall/Hit 分母。
 - 缺失观测的题标记为不可评分，不使用接口 citations 或答案文本反推。
 
 在 `~/.config/rag-eval-dataset/eval.env` 配置 `M3_QA_USER_REFRESH_TOKEN`（推荐）或 `M3_QA_USER_JWT`，以及可选的 `M3_BACKEND_CONTAINER` / `DOCKER_BIN`。token 只在服务端内存与轮换中使用，不返回浏览器。单轮题按服务内规则通常 `rewrite.called=false`、`fallback_reason=gate_skip`；要观察真实改写需在同一会话里连续发 followup / correction 多轮。
