@@ -15,7 +15,7 @@ const QA_MAX_CONSECUTIVE_FAILURES = 3;
 const QA_LOG_MAX_BYTES = 64 * 1024 * 1024;
 const QA_EVAL_CLIENT_PREFIX = 'eval-';
 const QA_CONVERSATION_PAGE_LIMIT = 50;
-const QA_CONVERSATION_MAX_PAGES = 10;
+const QA_CONVERSATION_MAX_PAGES = 200;
 const DOCKER_BIN_CANDIDATES = [
   process.env.DOCKER_BIN,
   'docker',
@@ -760,7 +760,7 @@ async function qaListOpenCustomerSessions(config, auth, userId, signal) {
   );
 }
 
-async function qaListCustomerMessages(config, auth, userId, signal) {
+async function qaListCustomerMessages(config, auth, userId, signal, { minCreatedAtMs } = {}) {
   const messages = [];
   let cursor = '';
   for (let page = 0; page < QA_CONVERSATION_MAX_PAGES; page += 1) {
@@ -780,15 +780,29 @@ async function qaListCustomerMessages(config, auth, userId, signal) {
     );
     const items = Array.isArray(payload?.data) ? payload.data : [];
     messages.push(...items);
+    if (Number.isFinite(minCreatedAtMs) && items.length) {
+      const times = items.map((item) => Date.parse(String(item?.created_at || '')));
+      if (times.every((value) => Number.isFinite(value) && value < minCreatedAtMs)) {
+        return { messages, complete: true, pages: page + 1, windowed: true };
+      }
+    }
     const pagination = payload?.pagination || {};
     const next = String(pagination.cursor || '').trim();
-    if (!pagination.has_more) return { messages, complete: true, pages: page + 1 };
+    if (!pagination.has_more) return { messages, complete: true, pages: page + 1, windowed: false };
     if (!next || next === cursor) {
       throw new RemoteError('M3 客服消息分页游标异常，无法校验会话内容');
     }
     cursor = next;
   }
-  return { messages, complete: false, pages: QA_CONVERSATION_MAX_PAGES };
+  return { messages, complete: false, pages: QA_CONVERSATION_MAX_PAGES, windowed: false };
+}
+
+function qaMessageWindowStart(sessions) {
+  const times = sessions
+    .map((item) => Date.parse(String(item?.createdAt || '')))
+    .filter((value) => Number.isFinite(value));
+  if (!times.length) return undefined;
+  return Math.min(...times) - 60_000;
 }
 
 function qaSessionMessageSafety(messages, sessionId, clientTurnId = '') {
@@ -858,7 +872,9 @@ async function qaPrepareIsolatedSessions(config, auth, signal) {
     );
   }
   const open = openSessions[0];
-  const page = await qaListCustomerMessages(config, auth, userId, signal);
+  const page = await qaListCustomerMessages(config, auth, userId, signal, {
+    minCreatedAtMs: qaMessageWindowStart([open]),
+  });
   if (!page.complete) {
     throw new RemoteError('M3 客服消息超过分页上限，无法在关闭前完成 eval- 白名单校验，已中止');
   }
@@ -881,7 +897,9 @@ async function qaPrepareIsolatedSessions(config, auth, signal) {
 async function qaCleanupFailedTurn(config, auth, userId, signal, runStartedAt) {
   const openSessions = await qaListOpenCustomerSessions(config, auth, userId, signal);
   if (!openSessions.length) return { closed: [], unsafe: [] };
-  const page = await qaListCustomerMessages(config, auth, userId, signal);
+  const page = await qaListCustomerMessages(config, auth, userId, signal, {
+    minCreatedAtMs: qaMessageWindowStart(openSessions),
+  });
   if (!page.complete) {
     throw new RemoteError('M3 客服消息超过分页上限，无法在失败清理前完成 eval- 白名单校验');
   }
