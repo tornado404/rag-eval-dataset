@@ -117,7 +117,28 @@ npm run validate
 
 校验器会读取根目录 `MANIFEST.json` 中列出的版本，并检查 JSONL 是否可解析、Case 和 Expected Output 是否对应、必需事实 ID 是否存在、Fact 引用的 Evidence 是否存在，以及审核状态和必填字段等约束。它不运行 RAG 检索或答案生成，也不校验版本目录内 `MANIFEST.json` 所列文件的哈希值；冻结发布时需另外复核版本清单。
 
-GitHub Actions 在 push 和 pull request 时校验数据；`deploy-m3` workflow 在 `main` push 时部署到 M3，也支持手动指定分支、tag 或 SHA 部署。
+GitHub Actions 在 push 和 pull request 时运行 lint、测试和数据集校验；`deploy-m3` workflow 在 `main` push 时部署到 M3，也支持手动指定分支、tag 或 SHA 部署。
+
+## Lint 仓库约束
+
+`npm run lint` 检查以下约束：
+
+- 所有已跟踪的 `.mjs` 文件通过当前 Node 的语法检查。
+- 所有已跟踪的 `.json` 和 `.jsonl` 文件可解析为 JSON，并报告错误路径和行号。
+- 根 `MANIFEST.json` 登记所有已跟踪的 `datasets/vX/` 目录，列出的目录存在，且 `current_version` 已登记。
+- 可选：设置 `LINT_BASE_REF` 后，检查该基线之后的提交是否修改基线中已存在的版本目录；未设置时跳过，兼容当前历史。
+- `editor/server.mjs` 的 `BIND_ADDRESS` 默认是 `127.0.0.1`，服务器只通过该变量绑定地址。
+- `editor/server.mjs` 的 `EDITABLE_FIELDS` 只包含允许的七个字段，保存时只复制白名单字段。
+- `package.json` 配置 `lint`、`check` 和 `test` 脚本，CI 工作流运行 `npm run check`。
+
+完整检查命令：
+
+```bash
+npm run lint
+npm run check
+```
+
+`npm run check` 依次运行 lint、数据校验和 repository tests。若要验证已有版本数据未变更，可显式指定基线，例如 `LINT_BASE_REF=HEAD~1 npm run lint`；基线中已有的版本目录在后续提交中不得修改，新增版本目录应先登记为当前版本再作为后续基线。
 
 ## 计算检索指标
 
