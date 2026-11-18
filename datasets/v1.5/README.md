@@ -39,6 +39,24 @@ v1.4 的证据 chunk ID 来自旧解析库，直接用于当前 RAGFlow 检索�
 
 引用这些证据的事实/题目在 v1.5 中仍保留，但对应 Gold 覆盖会被记为不可评分，而不是算作检索失败。
 
+## 对当前语料的复核（2026-11-18）
+
+用 M3 当前三个 qwen 库重新导出 21,960 个 chunk 后，按 `source_text` / `source_hash` 逐条复核：
+
+- 482/482 条 `source_hash` 与 `sha256(source_text)` 一致，标注文本未被改写。
+- 479 条已有 `ragflow_chunk_id` 全部仍存在于当前语料，不需要改 ID。
+- 458 条可在单个目标 chunk 中按规范化原文包含；21 条为 PDF 双栏/断行导致的非连续文本（bigram 覆盖率 0.61–1.0），仍指向正确的 chunk。
+- 3 条 `E00096` / `E00097` / `E00466` 维持不可映射。
+
+复核脚本：
+
+```bash
+node scripts/remap_gold_chunks.mjs /tmp/ragflow-live.jsonl
+# 如确有失效 ID 需要改写 evidences.jsonl，再加 --write
+```
+
+报告写入 `reports/v1.5-gold-mapping-verification.json`。本次复核 `remapped=0`，`evidences.jsonl` 未改动。
+
 ## 重新生成
 
 本目录由脚本生成，不手工编辑 `evidences.jsonl`：
