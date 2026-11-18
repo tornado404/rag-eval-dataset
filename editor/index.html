@@ -17,6 +17,11 @@ tr:hover{background:#f8faff}tr.dirty:hover{background:#fff4d6}.q{width:28%;font-
 .view-answer{white-space:pre-wrap}.editor-only{display:none}body.editing .editor-only{display:block}body.editing .view-answer,body.editing .view-field{display:none}
 textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;gap:6px;align-items:center}.status-dot{width:8px;height:8px;border-radius:50%;background:#d0d5dd;display:inline-block;margin-right:6px}.status-dot.dirty{background:#f79009}
 .msg{padding:10px 12px;border-radius:8px;margin-bottom:12px;display:none}.msg.error{display:block;background:#fef3f2;color:#b42318}.msg.ok{display:block;background:#ecfdf3;color:#067647}
+.eval-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;margin:0 0 16px;box-shadow:0 1px 2px #1018280a}.eval-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eval-head h2{font-size:18px;margin:0 0 4px}.eval-note{color:var(--muted);font-size:13px;margin:0 0 14px}.eval-config{display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:10px 14px;margin:14px 0}.eval-field{display:flex;flex-direction:column;gap:5px;font-weight:600}.eval-field input,.eval-field select{width:100%;min-width:0}.eval-field small{font-weight:400;color:var(--muted)}.eval-target-config{display:contents}.eval-target-config[hidden]{display:none}.eval-datasets{display:flex;gap:8px 14px;flex-wrap:wrap;margin:6px 0 12px}.eval-datasets label{font-weight:400;display:inline-flex;gap:5px;align-items:center}.eval-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}.eval-actions button{padding:9px 12px}.eval-progress{display:flex;align-items:center;gap:10px;color:var(--muted);margin-top:12px}.eval-progress[hidden]{display:none}.eval-progress progress{width:min(420px,55vw);height:10px}.eval-results{margin-top:16px}.eval-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.eval-metric-card{border:1px solid var(--line);border-radius:9px;padding:12px}.eval-metric-card h3{font-size:14px;margin:0 0 8px}.eval-metric-card dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0}.eval-metric-card dt{color:var(--muted)}.eval-metric-card dd{margin:0;font-variant-numeric:tabular-nums;font-weight:650}.eval-details{overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px}.eval-details table{min-width:1050px;font-size:12px}.eval-details th{position:static}.eval-details td{padding:7px 9px}.eval-query{max-width:340px;white-space:pre-wrap;word-break:break-word}.eval-status{font-weight:650}.eval-status.drift{color:#b42318}.eval-status.ok{color:#067647}.eval-status.unavailable{color:var(--warn)}.eval-muted{color:var(--muted)}
+.eval-profile-tools{display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(180px,1fr) auto auto auto;gap:10px;align-items:end;margin:14px 0 10px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.eval-profile-tools>button{min-height:40px;padding:9px 12px}.eval-profile-status,.eval-profile-note{grid-column:1/-1;margin:0;font-size:12px;color:#596579}.eval-profile-status{font-weight:600}.eval-ragflow-address{gap:7px}
+.eval-history{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:9px;background:#fbfcfe}.eval-history-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.eval-history-head h3{font-size:15px;margin:0}.eval-history-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.eval-history-list{display:grid;gap:8px;margin-top:10px}.eval-history-row{display:grid;grid-template-columns:minmax(180px,2fr) minmax(160px,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 10px}.eval-history-row strong{display:block;overflow-wrap:anywhere}.eval-history-row small{display:block;color:var(--muted);margin-top:3px}.eval-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(200px,1fr));gap:10px;margin:10px 0}.eval-compare-grid .eval-field{min-width:0}.eval-compare-result{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}.eval-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:650;background:#eef2f7;color:#475467}.eval-badge.complete{background:#ecfdf3;color:#067647}.eval-badge.partial{background:#fff7ed;color:var(--warn)}.eval-delta-true{color:#067647}.eval-delta-false{color:#b42318}.eval-table-scroll{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px}.eval-table-scroll table{min-width:900px}.eval-table-scroll th{position:static}
+button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button.primary:hover:not(:disabled){background:#1947bd;border-color:#1947bd}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #84adff;outline-offset:2px}.eval-field small,.eval-note,.eval-muted{color:#596579}
+@media(max-width:760px){main{padding:18px 14px 48px}.eval-config,.eval-profile-tools,.eval-compare-grid,.eval-history-row{grid-template-columns:1fr}.eval-head{display:block}.eval-head strong{display:block;margin-top:6px}.eval-target-config .eval-field[style]{grid-column:auto!important}.eval-profile-tools>button{width:100%}.eval-actions button{flex:1 1 180px}.eval-progress{align-items:flex-start;flex-direction:column}.eval-progress progress{width:100%}.eval-history-tools{width:100%}.eval-history-tools>*{flex:1 1 140px}}
 @media print{body{background:#fff}main{max-width:none;padding:0}.bar,.msg,.cell-actions{display:none}.table-wrap{max-height:none;border:0}table{min-width:0}th{position:static}tr{break-inside:avoid}td{padding:6px 8px;font-size:11px}textarea{display:none}.print-answer{display:block}}
 </style>
 </head>
@@ -27,6 +32,117 @@ textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;g
   <label><input id="editmode" type="checkbox" style="width:auto;min-width:0;flex:0"> 编辑模式</label>
   <span class="sub" style="margin:0">勾选后显示输入框；默认保持一页只读表格。</span>
 </div>
+<section class="eval-card" aria-labelledby="eval-title">
+  <div class="eval-head">
+    <div><h2 id="eval-title">M3 检索与 AI 问答评测</h2><p class="eval-note">按 v1.5 Gold Fact 与 OR / AND 证据组计算 Top-12 覆盖；AI 问答目标直接调用 M3 的 /api/v1/qa/turns 并读取服务端 Decision 与 Query 改写观测。</p></div>
+    <strong id="eval-case-count" class="eval-muted">载入中…</strong>
+  </div>
+  <div class="eval-profile-tools" aria-label="浏览器本地评测配置方案">
+    <label class="eval-field">已保存方案
+      <select id="eval-profile-select"><option value="">临时配置（不保存）</option></select>
+    </label>
+    <label class="eval-field">方案名称
+      <input id="eval-profile-name" maxlength="60" placeholder="例如：M3 本地 RAGFlow + Qwen" autocomplete="off">
+    </label>
+    <button type="button" id="eval-profile-save" class="primary">保存 / 更新方案</button>
+    <button type="button" id="eval-profile-delete" disabled>删除方案</button>
+    <button type="button" id="eval-server-defaults">载入服务端默认</button>
+    <p id="eval-profile-status" class="eval-profile-status" role="status" aria-live="polite">临时配置（未保存）</p>
+    <p class="eval-profile-note">方案（包括 API Key 和 Token）保存在当前浏览器此网站的 localStorage 中，浏览器本地可读取；不会写入数据集或仓库。运行评测时凭据会发送给当前评测服务。不同设备或浏览器需分别保存。</p>
+  </div>
+  <div class="eval-config" id="eval-config">
+    <label class="eval-field">检索目标
+      <select id="eval-target"><option value="ragflow">RAGFlow 原始 Top-12</option><option value="qa-probe">M3 AI 服务只读检索探针</option><option value="ai-qa">M3 AI 问答真实链路（Decision + 改写 + 证据）</option></select>
+      <small id="eval-target-note">直接调用 RAGFlow 检索接口，返回纯 RAGFlow Top-12；数据集 ID 取自当前版本映射。</small>
+    </label>
+    <label class="eval-field">模型 API 预设
+      <select id="rewrite-preset"><option value="">自定义</option><option value="m3-qwen" selected>M3 · Qwen3.6-35B-A3B-4bit</option></select>
+      <small>M3 管理页：http://192.168.31.201:8000/admin/dashboard；此预设调用 /v1/chat/completions，API Key 单独填写。</small>
+    </label>
+    <label class="eval-field">Query 改写模型 API 地址
+      <input id="rewrite-endpoint" type="url" value="http://192.168.31.201:8000/v1/chat/completions" placeholder="https://模型服务/v1/chat/completions" autocomplete="url">
+      <small>OpenAI 兼容 Chat Completions 完整地址；本工具单独触发改写，建议使用与 M3 相同的模型配置。只测漂移时无需检索服务凭据。</small>
+    </label>
+    <label class="eval-field">模型名称
+      <input id="rewrite-model" value="Qwen3.6-35B-A3B-4bit" placeholder="例如：当前服务使用的模型名" autocomplete="off">
+    </label>
+    <label class="eval-field">模型 API Key（Bearer）
+      <input id="rewrite-api-key" type="password" autocomplete="new-password" placeholder="留空使用服务端已配置 Key">
+      <small>按 Bearer Token 发送；留空时由服务端补全（如已配置）。</small>
+    </label>
+    <div class="eval-target-config" data-target="qa-probe">
+      <label class="eval-field">M3 API 根地址
+        <input id="qa-base-url" type="url" placeholder="https://m3-api.example.com" autocomplete="url">
+      </label>
+      <label class="eval-field">M3 管理员 Bearer Token
+        <input id="qa-token" type="password" autocomplete="new-password" placeholder="留空使用服务端已配置 Token">
+      </label>
+    </div>
+    <div class="eval-target-config" data-target="ai-qa" hidden>
+      <label class="eval-field">M3 API 根地址
+        <input id="aiqa-base-url" type="url" placeholder="https://api.nicoyabio.com" autocomplete="url">
+      </label>
+      <label class="eval-field">后端容器名（可选）
+        <input id="aiqa-container" placeholder="留空自动探测" autocomplete="off">
+        <small>评测服务用 docker logs 读取 turn_observation；容器不在本机或自动探测失败时填写。</small>
+      </label>
+      <div class="eval-field" style="grid-column:1/-1;gap:4px">
+        <strong>用户身份由服务端注入</strong>
+        <small class="eval-muted">用户 JWT / refresh token 只存在于 M3 的 eval.env；浏览器不显示、不发送。单轮题按服务规则通常跳过改写（gate_skip）。</small>
+      </div>
+    </div>
+    <div class="eval-target-config" data-target="ragflow" hidden>
+      <label class="eval-field eval-ragflow-address">RAGFlow API 根地址
+        <select id="ragflow-base-preset" aria-label="选择 RAGFlow API 地址预设">
+          <option value="">自定义地址</option>
+          <option value="http://192.168.31.201:8088/">本地 · 192.168.31.201:8088</option>
+          <option value="https://ragflow.dozoyen.com/">公网 · ragflow.dozoyen.com</option>
+        </select>
+        <input id="ragflow-base-url" type="url" placeholder="选择预设，或输入自定义地址" autocomplete="url">
+        <small>选择预设会填入输入框，地址仍可编辑。</small>
+      </label>
+      <label class="eval-field">RAGFlow API Key
+        <input id="ragflow-api-key" type="password" autocomplete="new-password" placeholder="留空使用服务端已配置 Key">
+      </label>
+      <div class="eval-field" style="grid-column:1/-1">RAGFlow 数据集
+        <div id="eval-datasets" class="eval-datasets"></div>
+        <small>默认读取当前数据集版本的 RAGFlow ID。</small>
+      </div>
+    </div>
+    <div class="eval-field" style="grid-column:1/-1;gap:4px">
+      <label style="display:inline-flex;gap:8px;align-items:center;font-weight:400">
+        <input id="use-server-credentials" type="checkbox" checked style="width:auto;min-width:0">
+        优先使用服务端已配置的 Key / Token（存在时覆盖表单输入）
+      </label>
+      <small id="server-credential-status" class="eval-muted">正在读取服务端配置…</small>
+    </div>
+    <label class="eval-field">本轮题数上限
+      <input id="eval-max-cases" type="number" min="0" max="1000" step="1" value="0">
+      <small>AI 问答真实链路固定跑全量，此选项仅用于其他检索目标。</small>
+    </label>
+  </div>
+  <p id="eval-cohort-note" class="eval-note">载入数据集后显示 Decision 与 Recall 分母。</p>
+  <div class="eval-actions" id="eval-actions">
+    <button type="button" class="primary" data-mode="full">一键测试全部指标</button>
+    <button type="button" data-mode="recall">Recall@12 / Gold Hit@12</button>
+    <button type="button" data-mode="drift">Query 漂移率</button>
+    <button type="button" data-mode="latency">P50 / P95 延迟</button>
+    <button type="button" id="eval-cancel" hidden>取消本轮</button>
+    <button type="button" id="eval-download" disabled>下载 JSON 报告</button>
+  </div>
+  <div class="eval-progress" id="eval-progress-wrap" hidden><progress id="eval-progress" max="1" value="0" aria-label="评测进度"></progress><span id="eval-status" role="status" aria-live="polite"></span></div>
+  <section class="eval-history" aria-labelledby="eval-history-title">
+    <div class="eval-history-head"><div><h3 id="eval-history-title">运行历史与比较</h3><p class="eval-note" style="margin:3px 0 0">报告保存在当前浏览器 IndexedDB，最多保留最近 50 次；清除站点数据前请下载 JSON 备份。报告不写入凭据配置所在的 localStorage。</p></div>
+      <div class="eval-history-tools"><button type="button" id="eval-history-refresh">刷新列表</button><button type="button" id="eval-history-clear" disabled>清空历史</button></div></div>
+    <div class="eval-compare-grid">
+      <label class="eval-field">基线运行<select id="eval-compare-base"><option value="">选择运行</option></select></label>
+      <label class="eval-field">对比运行<select id="eval-compare-other"><option value="">选择运行</option></select></label>
+    </div>
+    <div id="eval-compare-result" class="eval-compare-result" role="status" aria-live="polite">选择两次运行后显示比较结果。</div>
+    <div id="eval-history-list" class="eval-history-list"><p class="eval-muted">正在读取历史…</p></div>
+  </section>
+  <div id="eval-results" class="eval-results"></div>
+</section>
 <div id="msg" class="msg"></div>
 <div class="bar">
   <input id="search" placeholder="搜索问题、答案、行为或事实 ID">
@@ -40,11 +156,21 @@ textarea{width:100%;min-height:74px;resize:vertical}.cell-actions{display:flex;g
 <thead><tr><th>问题</th><th>预设答案 / 预期输出</th><th>检索事实</th><th>状态 / 行为</th><th>评分要点</th><th>操作</th></tr></thead>
 <tbody id="body"></tbody>
 </table></div>
-<script>
-const state={cases:[],facts:[],evidences:[],expected_outputs:[]};
-let original=new Map(),dirty=new Set(),debounce=null;
+<script type="module">
+import { compareReports } from './metrics.mjs';
+import * as reportHistory from './report-history.js';
+
+const state={cases:[],facts:[],evidences:[],fact_evidence_relations:[],datasets:[],expected_outputs:[]};
+let original=new Map(),dirty=new Set(),debounce=null,activeEvalController=null,lastEvalReport=null,reportCache=new Map();
 const q=id=>document.getElementById(id), body=q('body'), msg=q('msg');
 const factText=new Map();
+const EVAL_PROFILE_STORAGE_KEY='rag-eval-editor-profiles:v1';
+const MODEL_PRESET={id:'m3-qwen',endpoint:'http://192.168.31.201:8000/v1/chat/completions',model:'Qwen3.6-35B-A3B-4bit'};
+const RAGFLOW_BASE_PRESETS=[
+  {url:'http://192.168.31.201:8088/',label:'本地 RAGFlow'},
+  {url:'https://ragflow.dozoyen.com/',label:'公网 RAGFlow'},
+];
+let evalProfiles=[],activeEvalProfileId='',evalProfileSnapshot=null,evalProfileStorageReady=true,serverEvalDefaults=null;
 function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 function idsText(v){return Array.isArray(v)?v.join(', '):''}
 function parseIds(v){return v.split(/[,，\s]+/).map(s=>s.trim()).filter(Boolean)}
@@ -104,14 +230,568 @@ q('save').addEventListener('click',async()=>{
     showMsg(`已保存 ${data.saved} 条${data.commit?`；commit ${data.commit}`:''}`);
   }catch(err){showMsg(err.message,'error')}finally{q('save').disabled=false}
 });
+function rate(v){return Number.isFinite(v)?`${(v*100).toFixed(1)}%`:'—'}
+function milliseconds(v){return Number.isFinite(v)?`${Math.round(v)} ms`:'—'}
+function goldText(gold){
+  if(!gold||!gold.scorable_fact_count)return '不可评分';
+  const recall=Number.isFinite(gold.recall_at_k)?gold.recall_at_k:gold.recall_at_12;
+  const k=Number.isFinite(gold.k)&&gold.k>0?`@${gold.k}`:'';
+  return `${gold.hit_fact_count}/${gold.scorable_fact_count} 已评分（Recall${k} ${rate(recall)}）；Gold 映射 ${gold.scorable_fact_count}/${gold.required_fact_count}`;
+}
+function renderDatasetOptions(){
+  const host=q('eval-datasets');
+  host.innerHTML=state.datasets.map(ds=>`<label><input type="checkbox" data-dataset-id="${esc(ds.dataset_id)}" checked> ${esc(ds.dataset_id)} · ${esc(ds.dataset_name)} <span class="eval-muted">(${esc(ds.ragflow_dataset_id)})</span></label>`).join('');
+}
+function normalizedPresetUrl(value){return String(value||'').trim().replace(/\/+$/,'')}
+function syncModelPreset(){
+  const matches=normalizedPresetUrl(q('rewrite-endpoint').value)===normalizedPresetUrl(MODEL_PRESET.endpoint)&&q('rewrite-model').value.trim()===MODEL_PRESET.model;
+  q('rewrite-preset').value=matches?MODEL_PRESET.id:'';
+}
+function syncRagflowPreset(){
+  const current=normalizedPresetUrl(q('ragflow-base-url').value);
+  const match=RAGFLOW_BASE_PRESETS.find(preset=>normalizedPresetUrl(preset.url)===current);
+  q('ragflow-base-preset').value=match?.url||'';
+}
+function updateServerCredentialStatus(){
+  const credentials=serverEvalDefaults?.credentials||{};
+  const configured=[];
+  if(credentials.ragflowApiKey)configured.push('RAGFlow Key');
+  if(credentials.rewriteApiKey)configured.push('模型 Key');
+  if(credentials.qaToken)configured.push('M3 Token');
+  if(credentials.qaUserAuth)configured.push('M3 用户 JWT');
+  q('server-credential-status').textContent=serverEvalDefaults
+    ?configured.length?`服务端已配置 ${configured.join(' / ')}；勾选上方选项时对应输入可留空。`:'服务端未配置评测凭据；请在表单填写。'
+    :'无法读取服务端默认配置；请手动填写。';
+}
+function applyServerDefaults({force=false}={}){
+  if(!serverEvalDefaults)return false;
+  const defaults=serverEvalDefaults;
+  const setIfEmpty=(id,value)=>{if(force||!q(id).value.trim())q(id).value=String(value||'')};
+  if(force)q('eval-target').value=['qa-probe','ai-qa'].includes(defaults.target)?defaults.target:'ragflow';
+  setIfEmpty('rewrite-endpoint',defaults.rewriteEndpoint);
+  setIfEmpty('rewrite-model',defaults.rewriteModel);
+  setIfEmpty('qa-base-url',defaults.qaBaseUrl);
+  setIfEmpty('aiqa-base-url',defaults.qaBaseUrl);
+  setIfEmpty('aiqa-container',defaults.qaBackendContainer);
+  setIfEmpty('ragflow-base-url',defaults.ragflowBaseUrl);
+  if(force||!q('eval-max-cases').value)q('eval-max-cases').value=String(defaults.maxCases??0);
+  const wanted=new Set((defaults.datasetIds||[]).map(String));
+  const hasChecked=[...document.querySelectorAll('#eval-datasets input')].some(input=>input.checked);
+  if(wanted.size&&(force||!hasChecked)){
+    document.querySelectorAll('#eval-datasets input').forEach(input=>{
+      const dataset=state.datasets.find(item=>item.dataset_id===input.dataset.datasetId);
+      const id=dataset?.ragflow_dataset_id;
+      if(force)input.checked=Boolean(id&&wanted.has(id));
+      else if(id&&wanted.has(id))input.checked=true;
+    });
+  }
+  syncModelPreset();syncRagflowPreset();renderEvalTarget();
+  return true;
+}
+function captureEvalForm(){
+  return {
+    target:q('eval-target').value,
+    rewriteEndpoint:q('rewrite-endpoint').value,
+    rewriteModel:q('rewrite-model').value,
+    rewriteApiKey:q('rewrite-api-key').value,
+    qaBaseUrl:q('qa-base-url').value,
+    qaToken:q('qa-token').value,
+    aiqaBaseUrl:q('aiqa-base-url').value,
+    aiqaContainer:q('aiqa-container').value,
+    ragflowBaseUrl:q('ragflow-base-url').value,
+    ragflowApiKey:q('ragflow-api-key').value,
+    datasetIds:[...document.querySelectorAll('#eval-datasets input:checked')].map(input=>input.dataset.datasetId),
+    maxCases:q('eval-max-cases').value,
+  };
+}
+function evalFormSnapshot(){return JSON.stringify(captureEvalForm())}
+function refreshEvalProfileStatus(message){
+  const status=q('eval-profile-status');
+  const active=evalProfiles.find(profile=>profile.id===activeEvalProfileId);
+  q('eval-profile-delete').disabled=!active;
+  if(message){status.textContent=message;return}
+  if(!evalProfileStorageReady){status.textContent='无法读取浏览器配置存储；为避免覆盖现有数据，暂不能保存或切换方案。';return}
+  const changed=evalProfileSnapshot!==null&&evalFormSnapshot()!==evalProfileSnapshot;
+  if(active)status.textContent=changed?`方案“${active.name}”有未保存修改；保存 / 更新方案以保留。`:`当前方案：${active.name}`;
+  else status.textContent=changed?'临时配置有未保存修改；保存后可在此浏览器切换。':'临时配置（未保存）';
+}
+function renderEvalProfiles(){
+  const select=q('eval-profile-select');
+  select.replaceChildren(new Option('临时配置（不保存）',''));
+  for(const profile of evalProfiles)select.add(new Option(profile.name,profile.id));
+  select.value=activeEvalProfileId;
+  q('eval-profile-delete').disabled=!activeEvalProfileId;
+}
+function applyEvalProfile(config){
+  q('eval-target').value=['qa-probe','ai-qa'].includes(config.target)?config.target:'ragflow';
+  q('rewrite-endpoint').value=String(config.rewriteEndpoint||'');
+  q('rewrite-model').value=String(config.rewriteModel||'');
+  q('rewrite-api-key').value=String(config.rewriteApiKey||'');
+  q('qa-base-url').value=String(config.qaBaseUrl||'');
+  q('qa-token').value=String(config.qaToken||'');
+  q('aiqa-base-url').value=String(config.aiqaBaseUrl||'');
+  q('aiqa-container').value=String(config.aiqaContainer||'');
+  q('ragflow-base-url').value=String(config.ragflowBaseUrl||'');
+  q('ragflow-api-key').value=String(config.ragflowApiKey||'');
+  q('eval-max-cases').value=String(config.maxCases??'0');
+  const selected=new Set(Array.isArray(config.datasetIds)?config.datasetIds.map(String):[]);
+  document.querySelectorAll('#eval-datasets input').forEach(input=>{input.checked=selected.has(input.dataset.datasetId)});
+  syncModelPreset();syncRagflowPreset();renderEvalTarget();
+}
+function readEvalProfileStore(){
+  const raw=localStorage.getItem(EVAL_PROFILE_STORAGE_KEY);
+  if(!raw)return {version:1,activeId:'',profiles:[]};
+  const store=JSON.parse(raw);
+  if(store?.version!==1||!Array.isArray(store.profiles)||typeof store.activeId!=='string')throw new Error('浏览器配置数据格式不正确');
+  const profiles=store.profiles.filter(profile=>profile&&typeof profile.id==='string'&&typeof profile.name==='string'&&profile.name.trim()&&profile.config&&typeof profile.config==='object');
+  return {version:1,activeId:store.activeId,profiles};
+}
+function persistEvalProfileStore(activeId,profiles=evalProfiles){
+  if(!evalProfileStorageReady)return false;
+  try{
+    localStorage.setItem(EVAL_PROFILE_STORAGE_KEY,JSON.stringify({version:1,activeId:activeId||'',profiles}));
+    return true;
+  }catch{
+    refreshEvalProfileStatus('浏览器存储失败或空间不足；本次更改尚未持久保存。');
+    return false;
+  }
+}
+function initializeEvalProfiles(){
+  syncModelPreset();syncRagflowPreset();
+  try{
+    const store=readEvalProfileStore();evalProfiles=store.profiles;
+    const active=evalProfiles.find(profile=>profile.id===store.activeId);
+    if(active){
+      activeEvalProfileId=active.id;q('eval-profile-name').value=active.name;
+      applyEvalProfile(active.config);evalProfileSnapshot=evalFormSnapshot();
+    }else{activeEvalProfileId='';evalProfileSnapshot=evalFormSnapshot()}
+    renderEvalProfiles();refreshEvalProfileStatus();
+  }catch(error){
+    evalProfileStorageReady=false;activeEvalProfileId='';evalProfileSnapshot=evalFormSnapshot();
+    renderEvalProfiles();refreshEvalProfileStatus(`读取浏览器方案失败：${error.message}`);
+  }
+}
+function saveEvalProfile(){
+  if(!evalProfileStorageReady){refreshEvalProfileStatus();return}
+  const name=q('eval-profile-name').value.trim();
+  if(!name){refreshEvalProfileStatus('请先填写方案名称。');q('eval-profile-name').focus();return}
+  const config=captureEvalForm();
+  const namedProfile=evalProfiles.find(profile=>profile.name.toLocaleLowerCase()===name.toLocaleLowerCase());
+  const id=activeEvalProfileId||namedProfile?.id||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
+  const nextProfiles=evalProfiles.filter(profile=>profile.id!==id&&profile.name.toLocaleLowerCase()!==name.toLocaleLowerCase());
+  nextProfiles.push({id,name,config});
+  if(!persistEvalProfileStore(id,nextProfiles))return;
+  evalProfiles=nextProfiles;activeEvalProfileId=id;evalProfileSnapshot=JSON.stringify(config);
+  q('eval-profile-name').value=name;renderEvalProfiles();refreshEvalProfileStatus(`已保存方案：${name}`);
+}
+function selectEvalProfile(){
+  const nextId=q('eval-profile-select').value;
+  if(nextId===activeEvalProfileId)return;
+  const next=evalProfiles.find(profile=>profile.id===nextId);
+  const hasChanges=evalProfileSnapshot!==null&&evalFormSnapshot()!==evalProfileSnapshot;
+  if(next&&hasChanges&&!confirm('切换方案会替换当前表单配置。仍要继续吗？')){q('eval-profile-select').value=activeEvalProfileId;return}
+  if(next){
+    applyEvalProfile(next.config);activeEvalProfileId=next.id;q('eval-profile-name').value=next.name;
+  }else{
+    activeEvalProfileId='';q('eval-profile-name').value='';
+  }
+  evalProfileSnapshot=evalFormSnapshot();renderEvalProfiles();
+  const persisted=persistEvalProfileStore(activeEvalProfileId);
+  refreshEvalProfileStatus(persisted?undefined:'当前表单已切换；浏览器未能记住所选方案。');
+}
+function deleteEvalProfile(){
+  const profile=evalProfiles.find(item=>item.id===activeEvalProfileId);
+  if(!profile||!confirm(`删除浏览器方案“${profile.name}”？`))return;
+  const nextProfiles=evalProfiles.filter(item=>item.id!==profile.id);
+  if(!persistEvalProfileStore('',nextProfiles))return;
+  evalProfiles=nextProfiles;activeEvalProfileId='';evalProfileSnapshot=evalFormSnapshot();
+  q('eval-profile-name').value='';renderEvalProfiles();refreshEvalProfileStatus(`已删除方案：${profile.name}`);
+}
+function renderEvalTarget(){
+  const target=q('eval-target').value;
+  document.querySelectorAll('.eval-target-config').forEach(el=>{el.hidden=el.dataset.target!==target});
+  q('eval-max-cases').closest('label').hidden=target==='ai-qa';
+  q('eval-target-note').textContent=target==='qa-probe'
+    ?'只读探针复用服务端融合检索，不写问答记录；需 M3 开启 AI_DEBUG_TOOLS_ENABLED，且 APP_ENV 为 dev/test/local。生产环境通常返回 401/404，请优先选 RAGFlow。'
+    :target==='ai-qa'
+      ?'真实调用 POST /api/v1/qa/turns（deliver=auto），完整经过 Decision 路由、Query 改写门禁和最终证据装配；分数来自后端 turn_observation 日志。'
+      :'直接调用 RAGFlow 检索接口，返回纯 RAGFlow Top-12；数据集 ID 取自当前版本映射。';
+  const driftButton=document.querySelector('#eval-actions [data-mode="drift"]');
+  if(driftButton)driftButton.disabled=target==='ai-qa';
+  updateCohortNote();
+}
+function decisionCohortSize(){
+  return state.expected_outputs.length;
+}
+function recallCohortSize(){
+  return state.expected_outputs.filter(row=>row.expected_behavior==='answer'&&(row.required_fact_ids||[]).length>0).length;
+}
+function updateCohortNote(report=null){
+  const decision=report?.evaluation?.cohorts?.decision??decisionCohortSize();
+  const recall=report?.evaluation?.cohorts?.recall??recallCohortSize();
+  const scoreable=report?.evaluation?.decision?.scoreable??report?.summary?.decision?.scoreable_cases;
+  const status=report?` · 本次报告 ${esc(report.status)}${report.status!=='complete'?`（${esc((report.completion_failures||[]).join(', ')||'原因未知')}）`:''}`:'';
+  q('eval-cohort-note').innerHTML=`Decision 队列 ${decision} 题${Number.isFinite(scoreable)?` · 可评分 ${scoreable} 题`:''}；Recall 队列 ${recall} 题（仅预期作答且有 Gold Fact）。${status}`;
+}
+function metricCard(title,stats,labels={}){
+  if(!stats)return '';
+  const recall=Number.isFinite(stats.recall_at_k)?stats.recall_at_k:stats.recall_at_12;
+  const hit=Number.isFinite(stats.hit_at_k)?stats.hit_at_k:stats.gold_hit_at_12;
+  return `<section class="eval-metric-card"><h3>${esc(title)}</h3><dl>
+    <dt>${esc(labels.recall||'Gold Recall@12（宏平均）')}</dt><dd>${rate(recall)}</dd>
+    <dt>${esc(labels.hit||'Gold Hit@12')}</dt><dd>${rate(hit)} <span class="eval-muted">(${stats.cases_with_gold_hit??0}/${stats.cases_scored??0})</span></dd>
+    <dt>P50</dt><dd>${milliseconds(stats.p50_latency_ms)}</dd>
+    <dt>P95</dt><dd>${milliseconds(stats.p95_latency_ms)}</dd>
+    <dt>可评分 / 总题数</dt><dd>${stats.cases_scored??0}/${stats.cases_total??0}</dd>
+    <dt>Gold 映射缺失 / 检索失败</dt><dd>${stats.cases_unscorable_gold??0} / ${stats.cases_failed??0}</dd>
+  </dl></section>`;
+}
+function targetLabel(target){
+  return target==='ai-qa'?'M3 AI 问答真实链路':target==='qa-probe'?'M3 服务探针':'RAGFlow 原始接口';
+}
+function statusBadge(status){
+  return `<span class="eval-badge ${esc(status||'unknown')}">${esc(status||'unknown')}</span>`;
+}
+function formatRunMeta(report){
+  const run=report.run||{},decision=run.decision||{},config=run.config||{};
+  return `<dl>
+    <dt>报告状态</dt><dd>${statusBadge(report.status)}${Array.isArray(report.completion_failures)&&report.completion_failures.length?`<br><span class="eval-muted">不完整：${esc(report.completion_failures.join(', '))}</span>`:''}</dd>
+    <dt>Decision 模式 / family</dt><dd>${esc(decision.mode||'—')} / ${esc(decision.family||'—')}</dd>
+    <dt>Decision 模型 / 来源</dt><dd>${esc(decision.model_id||'—')} / ${esc(decision.source||decision.trace_source||'—')}</dd>
+    <dt>逐题来源 / 模型</dt><dd>${formatCounts(decision.provider_counts)} / ${formatCounts(decision.model_counts)}</dd>
+    <dt>逐题配置 / fallback</dt><dd>${formatCounts(decision.fingerprint_counts)} / ${formatCounts(decision.fallback_counts)}</dd>
+    <dt>来源 / 配置一致性</dt><dd>${decision.mixed_provider?'<span class="eval-status drift">mixed provider</span>':'单一来源'} · ${decision.mixed_config?'<span class="eval-status drift">mixed config</span>':'单一配置'}</dd>
+    <dt>配置指纹 / 版本</dt><dd>${esc(config.fingerprint||'—')} / ${esc(config.intent_config_version||'—')}</dd>
+    <dt>Build SHA / 语料快照</dt><dd>${esc(run.build_sha||'—')} / ${esc(run.corpus_snapshot||'—')}</dd>
+    <dt>标签状态</dt><dd>${esc(report.dataset?.label_status||'—')}${report.dataset?.provisional?' · provisional':''}</dd>
+  </dl>`;
+}
+function decisionSection(report){
+  const decision=report.summary?.decision||{};
+  const perClass=decision.per_class||[];
+  const observedActions=[...new Set(perClass.flatMap(row=>[row.action,...(decision.confusion||[]).filter(item=>item.expected===row.action).map(item=>item.observed)]))].sort();
+  const issueRows=(report.rows||[]).filter(row=>row.scoreable&&row.observed_action&&row.expected_action!==row.observed_action);
+  const issueTable=issueRows.length?`<div class="eval-table-scroll"><table><thead><tr><th>Case</th><th>期望动作</th><th>实际动作</th><th>原因</th></tr></thead><tbody>${issueRows.map(row=>`<tr><td>${esc(row.case_id)}</td><td>${esc(row.expected_action)}</td><td>${esc(row.observed_action)}</td><td class="eval-query">${esc(row.decision?.action_reason||row.decision_action_reason||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="eval-muted">没有误拒 / 误答记录。</p>';
+  return `<section class="eval-metric-card"><h3>Decision 评分</h3><dl>
+    <dt>准确率</dt><dd>${rate(decision.accuracy)} <span class="eval-muted">(${decision.observed_cases??0}/${decision.scoreable_cases??0})</span></dd>
+    <dt>Macro F1</dt><dd>${rate(decision.macro_f1)}</dd>
+    <dt>队列 / 可评分 / 已观测</dt><dd>${decision.cohort_cases??0} / ${decision.scoreable_cases??0} / ${decision.observed_cases??0}</dd>
+    <dt>严格误拒</dt><dd>${decision.strict_false_refusal?.cases??0}/${decision.strict_false_refusal?.denominator??0} · ${rate(decision.strict_false_refusal?.rate)}<br><span class="eval-muted">预期作答题；动作：${esc((decision.strict_false_refusal?.actions||[]).join(', ')||'—')}</span></dd>
+    <dt>广义非作答拒止</dt><dd>${decision.broad_false_refusal?.cases??0}/${decision.broad_false_refusal?.denominator??0} · ${rate(decision.broad_false_refusal?.rate)}<br><span class="eval-muted">同一分母，额外包含 escalate_human / clarify / other</span></dd>
+    <dt>误答</dt><dd>${decision.false_answer?.cases??0}/${decision.false_answer?.denominator??0} · ${rate(decision.false_answer?.rate)}</dd>
+    <dt>逐题标签</dt><dd>${esc(report.dataset?.label_status||'—')}${report.dataset?.provisional?' · provisional':''}</dd>
+  </dl>
+  <h4>每类 P/R/F1</h4><div class="eval-table-scroll"><table><thead><tr><th>动作</th><th>支持数</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead><tbody>${perClass.map(row=>`<tr><td>${esc(row.action)}</td><td>${row.support}</td><td>${rate(row.precision)}</td><td>${rate(row.recall)}</td><td>${rate(row.f1)}</td></tr>`).join('')}</tbody></table></div>
+  <h4>混淆矩阵（非空）</h4><div class="eval-table-scroll"><table><thead><tr><th>期望 / 实际</th>${observedActions.map(action=>`<th>${esc(action)}</th>`).join('')}</tr></thead><tbody>${perClass.map(expected=>`<tr><th>${esc(expected.action)}</th>${observedActions.map(observed=>`<td>${(decision.confusion||[]).find(item=>item.expected===expected.action&&item.observed===observed)?.count||0}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  <h4>误拒 / 误答</h4>${issueTable}</section>`;
+}
+function recallSection(report){
+  const recall=report.summary||{},final=recall.final_grounding||{},raw=recall.ragflow_candidates_at_12||{},coverage=recall.corpus_coverage||{};
+  return `<section class="eval-metric-card"><h3>Recall 状态与覆盖</h3><dl>
+    <dt>队列分母</dt><dd>${recall.cohort_cases??0} 题</dd>
+    <dt>尝试检索</dt><dd>${recall.retrieval_attempted?.cases??0}/${recall.retrieval_attempted?.denominator??0} · ${rate(recall.retrieval_attempted?.rate)}</dd>
+    <dt>观测覆盖</dt><dd>${recall.observation_coverage?.cases??0}/${recall.observation_coverage?.denominator??0} · ${rate(recall.observation_coverage?.rate)}</dd>
+    <dt>Chunk 级观测</dt><dd>${recall.chunk_observation_coverage?.cases??0}/${recall.chunk_observation_coverage?.denominator??0} · ${rate(recall.chunk_observation_coverage?.rate)}</dd>
+    <dt>not_retrieved / empty / unavailable / scored</dt><dd>${recall.states?.not_retrieved??0} / ${recall.states?.empty_candidate_observed??0} / ${recall.states?.unavailable??0} / ${recall.states?.scored??0}</dd>
+    <dt>Gold facts 命中</dt><dd>${final.gold_facts_hit??0}/${final.gold_facts_scored??0} · ${rate(final.micro_fact_recall_at_k)}</dd>
+    <dt>Gold 覆盖题目</dt><dd>${final.cases_with_gold_hit??0}/${final.cases_scored??0} · ${rate(final.hit_at_k)}</dd>
+    <dt>最终证据 Gold Recall</dt><dd>${rate(final.recall_at_k)} · K ${final.k_min??'—'}-${final.k_max??'—'}</dd>
+    <dt>原始候选 Gold Recall</dt><dd>${rate(raw.recall_at_k)} · ${raw.gold_facts_hit??0}/${raw.gold_facts_scored??0}</dd>
+    <dt>所需 Gold facts</dt><dd>${recall.gold_facts_required??0}</dd>
+    <dt>Gold 语料库</dt><dd>${coverage.gold_datasets?.covered??0}/${coverage.gold_datasets?.total_online??0} · ${esc((coverage.gold_datasets?.ids||[]).join(', ')||'—')}</dd>
+    <dt>Evidence 行映射</dt><dd>${coverage.evidence_rows?.mapped??0}/${coverage.evidence_rows?.total??0} · ${rate(coverage.evidence_rows?.rate)}</dd>
+    <dt>Required facts 可评分</dt><dd>${coverage.required_facts?.scorable??0}/${coverage.required_facts?.total??0} · ${rate(coverage.required_facts?.rate)}</dd>
+    <dt>未映射 Evidence</dt><dd>${esc((coverage.unmapped_evidence_ids||[]).join(', ')||'—')}</dd>
+  </dl></section>`;
+}
+function metadataSection(report){
+  return `<section class="eval-metric-card"><h3>运行归因</h3>${formatRunMeta(report)}</section>`;
+}
+function sessionIsolationSection(report){
+  const session=report.summary?.session_isolation||{};
+  const actionText={none:'未处理既有会话',closed_eval_session:'已关闭经白名单验证的 eval 会话'};
+  return `<section class="eval-metric-card"><h3>Session 隔离</h3><dl>
+    <dt>评估身份</dt><dd>${session.user_id_configured?'已配置':'未配置'}</dd>
+    <dt>Preflight</dt><dd>${esc(actionText[session.preflight_action]||session.preflight_action||'—')}${session.preflight_session_id?` · ${esc(session.preflight_session_id)}`:''}</dd>
+    <dt>会话数</dt><dd>共 ${session.cases_with_session??0} 题 · 唯一 ${session.unique_sessions??0} · 重复 ${session.duplicate_sessions??0}</dd>
+    <dt>关闭</dt><dd>${session.cases_closed??0}/${session.cases_with_session??0} · 失败 ${session.close_failures??0}</dd>
+    <dt>unsafe 清理项</dt><dd>${(report.warnings||[]).filter(text=>text.includes('不可关闭会话')||text.includes('会话隔离')).length?esc(report.warnings.filter(text=>text.includes('不可关闭会话')||text.includes('会话隔离')).join('；')):'无'}</dd>
+  </dl></section>`;
+}
+function aiQaCaseRows(report){
+  return (report.rows||[]).map(row=>{
+    const obs=row.observation||{},rw=obs.rewrite||{},dec=row.decision||{};
+    const expected=row.scoreable?esc(row.expected_action||'—'):`不可评分 · ${esc(row.expected_behavior||'—')}`;
+    const observedAction=row.observed_action||dec.action||obs.decision_action||'—';
+    const observed=esc(observedAction);
+    const actionClass=!row.scoreable?'unavailable':row.expected_action===observedAction?'ok':'drift';
+    return `<tr><td>${esc(row.case_id)}</td><td class="eval-query">${esc(row.question)}</td>
+      <td>${expected}</td><td class="eval-status ${actionClass}">${observed}${row.scoreable&&row.expected_action!==observedAction?`<br><span class="eval-muted">${esc(row.decision?.action_reason||obs.decision_action_reason||'—')}</span>`:''}</td>
+      <td>${esc(row.retrieval_state||'—')}<br><span class="eval-muted">${esc(row.retrieval_state_reason||'—')}</span></td>
+      <td>${goldText(row.final?.gold)}</td><td>${goldText(row.raw_ragflow?.gold)}</td>
+      <td>${rw.applied?esc(obs.standalone_query||''):`未改写 · ${esc(rw.fallback_reason||rw.mode||'无观测')}`}</td>
+      <td>${milliseconds(row.qa?.latency_ms)}</td></tr>`;
+  }).join('');
+}
+function downloadReport(report){
+  if(!report)return;
+  const blob=new Blob([JSON.stringify(report,null,2)+'\n'],{type:'application/json'}),link=document.createElement('a');
+  link.href=URL.createObjectURL(blob);link.download=`rag-eval-${report.dataset_version||'dataset'}-${report.run_id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+}
+function formatCounts(counts){
+  const entries=Object.entries(counts||{});
+  return entries.length?entries.map(([key,value])=>`${key}×${value}`).join('，'):'—';
+}
+function renderAiQaReport(report){
+  const summary=report.summary||{},final=summary.final_grounding||{},raw=summary.ragflow_candidates_at_12||{};
+  const decision=summary.decision||{},rewrite=summary.query_rewrite||{},latency=summary.service_latency_ms||{};
+  const cards=[
+    metricCard('AI 问答最终证据池',final,{recall:'Gold Recall@K（宏平均）',hit:'Gold Hit@K'}),
+    metricCard('RAGFlow 原始候选（merge 前）',raw),
+    decisionSection(report),
+    recallSection(report),
+    metadataSection(report),
+    sessionIsolationSection(report),
+    `<section class="eval-metric-card"><h3>Query 改写（服务内）</h3><dl>
+      <dt>实际调用</dt><dd>${rewrite.called_cases??0}</dd>
+      <dt>实际应用</dt><dd>${rewrite.applied_cases??0}</dd>
+      <dt>未改写原因</dt><dd>${esc(formatCounts(rewrite.fallback_reasons))}</dd>
+      <dt>改写耗时 P50 / P95</dt><dd>${milliseconds(rewrite.p50_latency_ms)} / ${milliseconds(rewrite.p95_latency_ms)}</dd>
+    </dl></section>`,
+    `<section class="eval-metric-card"><h3>服务耗时</h3><dl>
+      <dt>P50</dt><dd>${milliseconds(latency.p50)}</dd>
+      <dt>P95</dt><dd>${milliseconds(latency.p95)}</dd>
+      <dt>平均</dt><dd>${milliseconds(latency.mean)}</dd>
+      <dt>总耗时</dt><dd>${milliseconds(report.duration_ms)}</dd>
+    </dl></section>`,
+  ];
+  const notes=report.metric_notes||{};
+  const warnings=(report.warnings||[]).map(text=>`<br>注意：${esc(text)}`).join('');
+  const rows=report.rows||[];
+  q('eval-results').innerHTML=`<p class="eval-note">运行 ${esc(report.run_id)} · Decision ${report.evaluation?.cohorts?.decision??report.cases_total??0} 题 / Recall ${report.evaluation?.cohorts?.recall??0} 题 · 总耗时 ${milliseconds(report.duration_ms)} · 目标：${targetLabel(report.target)} · 容器：${esc(report.target_config?.backend_container||'—')}</p>
+    <div class="eval-cards">${cards.join('')}</div>
+    <p class="eval-note">${esc(notes.final_grounding||'')} ${esc(notes.ragflow_candidates_at_12||'')} ${esc(notes.ai_qa||'')} ${esc(notes.observation||'')} ${esc(notes.decision||'')}${warnings}</p>
+    <details><summary>逐题 expected vs observed（${rows.length}）</summary><div class="eval-details"><table><thead><tr><th>Case</th><th>原问题</th><th>期望动作</th><th>实际动作</th><th>检索状态</th><th>最终证据池 Gold</th><th>原始候选 Gold@12</th><th>服务内改写</th><th>服务耗时</th></tr></thead><tbody>${aiQaCaseRows(report)}</tbody></table></div></details>`;
+}
+function renderEvalReport(report){
+  if(report.target==='ai-qa')return renderAiQaReport(report);
+  const summary=report.summary||{},drift=summary.query_drift||{},rewriteLatency=summary.query_rewrite_latency_ms||{};
+  const mode=report.mode;
+  const cards=[];
+  if(mode!=='drift'){
+    cards.push(metricCard('原始问题 · 基线',summary.original));
+    cards.push(metricCard('Query 改写 · 检索链路',summary.rewritten));
+  }
+  if(mode==='full'||mode==='drift')cards.push(`<section class="eval-metric-card"><h3>Query 漂移判定</h3><dl>
+    <dt>漂移率</dt><dd>${rate(drift.drift_rate)} <span class="eval-muted">(${drift.drifted_cases??0}/${drift.judged_cases??0})</span></dd>
+    <dt>判定覆盖</dt><dd>${rate(drift.judge_coverage)}</dd>
+    <dt>改写失败</dt><dd>${drift.failed_rewrites??0}</dd>
+    <dt>判定不可用</dt><dd>${drift.unavailable_cases??0}</dd>
+    <dt>改写耗时 P50 / P95</dt><dd>${milliseconds(rewriteLatency.p50)} / ${milliseconds(rewriteLatency.p95)}</dd>
+  </dl></section>`);
+  const rows=report.rows||[];
+  const details=rows.map(row=>{
+    const status=row.drift?.status||'unavailable';
+    const statusText={ok:'无漂移',drift:'检测到漂移',rewrite_failed:'改写失败',unavailable:'未判定'}[status]||status;
+    const rewritten=row.rewritten_query||row.error||'—';
+    return `<tr><td>${esc(row.case_id)}</td><td class="eval-query">${esc(row.question)}</td><td class="eval-query">${esc(rewritten)}</td>
+      <td class="eval-status ${status==='drift'||status==='rewrite_failed'?'drift':status==='ok'?'ok':'unavailable'}">${esc(statusText)}${row.drift?.reason?`<br><span class="eval-muted">${esc(row.drift.reason)}</span>`:''}</td>
+      <td>${mode==='drift'?'—':goldText(row.original?.gold)}</td><td>${mode==='drift'?'—':goldText(row.rewritten?.gold)}</td>
+      <td>${milliseconds(row.original?.path_latency_ms)}</td><td>${milliseconds(row.rewrite_path_latency_ms)}</td></tr>`;
+  }).join('');
+  const notes=report.metric_notes||{};
+  q('eval-results').innerHTML=`<p class="eval-note">运行 ${esc(report.run_id)} · ${report.cases_total} 题 · 总耗时 ${milliseconds(report.duration_ms)} · 目标：${targetLabel(report.target)} · 模型：${esc(report.target_config?.rewrite_model||'')}</p>
+    <div class="eval-cards">${cards.join('')}</div>
+    <p class="eval-note">Recall@12 按可映射的 required facts 和数据集 OR/AND 证据组评分。${report.target==='qa-probe'?` ${esc(notes.qa_probe||'')}`:''} ${esc(notes.query_rewrite||'')} ${esc(notes.latency||'')}</p>
+    <details><summary>逐题结果（${rows.length}）</summary><div class="eval-details"><table><thead><tr><th>Case</th><th>原问题</th><th>改写 Query / 错误</th><th>漂移</th><th>基线 Gold 覆盖</th><th>改写 Gold 覆盖</th><th>基线耗时</th><th>改写链路耗时</th></tr></thead><tbody>${details}</tbody></table></div></details>`;
+}
+function buildEvalConfig(){
+  const target=q('eval-target').value;
+  const useServerCredentials=q('use-server-credentials').checked;
+  const credentials=serverEvalDefaults?.credentials||{};
+  const config={
+    target,
+    maxCases:Number(q('eval-max-cases').value||0),
+  };
+  if(target==='ai-qa'){
+    config.qaBaseUrl=q('aiqa-base-url').value.trim();
+    config.qaBackendContainer=q('aiqa-container').value.trim();
+  }else{
+    config.rewriteEndpoint=q('rewrite-endpoint').value.trim();
+    config.rewriteModel=q('rewrite-model').value.trim();
+    config.rewriteApiKey=useServerCredentials&&credentials.rewriteApiKey?'':q('rewrite-api-key').value;
+  }
+  if(target==='qa-probe'){
+    config.qaBaseUrl=q('qa-base-url').value.trim();
+    config.qaToken=useServerCredentials&&credentials.qaToken?'':q('qa-token').value;
+  }else if(target==='ragflow'){
+    config.ragflowBaseUrl=q('ragflow-base-url').value.trim();
+    config.ragflowApiKey=useServerCredentials&&credentials.ragflowApiKey?'':q('ragflow-api-key').value;
+    config.datasetIds=[...document.querySelectorAll('#eval-datasets input:checked')].map(input=>{
+      const dataset=state.datasets.find(ds=>ds.dataset_id===input.dataset.datasetId);
+      return dataset?.ragflow_dataset_id;
+    }).filter(Boolean);
+  }
+  return config;
+}
+async function refreshEvalHistory(){
+  let reports;
+  try{reports=await reportHistory.listReports()}catch(error){q('eval-history-list').innerHTML=`<p class="eval-status drift">读取历史失败：${esc(error.message)}</p>`;return}
+  const base=q('eval-compare-base'),other=q('eval-compare-other');
+  const previousBase=base.value,previousOther=other.value;
+  base.innerHTML='<option value="">选择运行</option>';other.innerHTML='<option value="">选择运行</option>';
+  for(const report of reports){
+    const label=`${new Date(report.finished_at||report.stored_at).toLocaleString()} · ${statusBadge(report.status)} · ${esc(report.run?.decision?.mode||report.run?.decision?.model_id||'—')} · ${esc(report.run_id.slice(0,8))}`;
+    base.add(new Option(label.replace(/<[^>]+>/g,''),report.run_id));other.add(new Option(label.replace(/<[^>]+>/g,''),report.run_id));
+  }
+  if(reports.some(report=>report.run_id===previousBase))base.value=previousBase;
+  if(reports.some(report=>report.run_id===previousOther))other.value=previousOther;
+  q('eval-history-clear').disabled=reports.length===0;
+  q('eval-history-list').innerHTML=reports.length?reports.map(report=>`<div class="eval-history-row"><div><strong>${esc(new Date(report.finished_at||report.stored_at).toLocaleString())}</strong><small>${esc(report.run_id)} · ${statusBadge(report.status)} · Decision ${esc(report.run?.decision?.mode||'—')} / ${esc(report.run?.decision?.model_id||'—')}</small></div><small>${report.cases_total??0} 题 · 准确率 ${rate(report.summary?.decision?.accuracy)} · Recall ${rate(report.summary?.final_grounding?.recall_at_k)}</small><div class="eval-history-tools"><button type="button" data-history-action="open" data-run-id="${esc(report.run_id)}">查看</button><button type="button" data-history-action="download" data-run-id="${esc(report.run_id)}">下载</button><button type="button" data-history-action="delete" data-run-id="${esc(report.run_id)}">删除</button></div></div>`).join(''):'<p class="eval-muted">暂无保存的运行报告。</p>';
+  renderComparison();
+}
+async function getCachedReport(runId){
+  if(reportCache.has(runId))return reportCache.get(runId);
+  const report=await reportHistory.getReport(runId);reportCache.set(runId,report);return report;
+}
+function renderComparison(){
+  const baseId=q('eval-compare-base').value,otherId=q('eval-compare-other').value;
+  const host=q('eval-compare-result');
+  if(!baseId||!otherId||baseId===otherId){host.textContent=baseId&&otherId&&baseId===otherId?'请选择两次不同的运行。':'选择两次运行后显示比较结果。';return}
+  Promise.all([getCachedReport(baseId),getCachedReport(otherId)]).then(([base,other])=>{
+    const compared=compareReports(base,other);
+    const metric=(label,value,format='pp')=>`<dt>${esc(label)}</dt><dd class="${Number.isFinite(value)?value>=0?'eval-delta-true':'eval-delta-false':''}">${Number.isFinite(value)?format==='count'?`${value>=0?'+':''}${value}`:`${value>=0?'+':''}${(value*100).toFixed(1)}pp`:'—'}</dd>`;
+    if(!compared.compatible){
+      host.innerHTML=`<strong>不可直接比较</strong><p class="eval-muted">不兼容项：${esc(compared.reasons.join(', ')||'运行状态不是 complete')}</p>${compared.confounders.length?`<p class="eval-muted">其他差异：${esc(compared.confounders.join(', '))}</p>`:''}<p class="eval-muted">隐藏 headline delta，避免无依据结论。可在运行归因中逐项核对。</p>`;
+      return;
+    }
+    const actionChanges=(other.rows||[]).map(row=>{
+      const baseRow=(base.rows||[]).find(item=>item.case_id===row.case_id);
+      if(!baseRow||baseRow.observed_action===row.observed_action)return null;
+      return `<tr><td>${esc(row.case_id)}</td><td>${esc(baseRow.observed_action||'—')}</td><td>${esc(row.observed_action||'—')}</td></tr>`;
+    }).filter(Boolean);
+    const recallChanges=(compared.recall_changes||[]).map(change=>`<tr><td>${esc(change.case_id)}</td><td>${esc(change.base.retrieval_state||'—')} / ${change.base.final_hit_fact_count??'—'} / ${change.base.raw_hit_fact_count??'—'}</td><td>${esc(change.other.retrieval_state||'—')} / ${change.other.final_hit_fact_count??'—'} / ${change.other.raw_hit_fact_count??'—'}</td><td>${change.final_hit_delta??'—'} / ${change.raw_hit_delta??'—'}</td></tr>`).join('');
+    host.innerHTML=`<strong>兼容运行对比</strong><dl>${metric('Decision 准确率 delta',compared.deltas.decision_accuracy)}${metric('Decision Macro F1 delta',compared.deltas.decision_macro_f1)}${metric('最终证据 Gold Recall delta',compared.deltas.final_recall_at_k)}${metric('原始候选 Gold Recall delta',compared.deltas.candidate_recall_at_k)}${metric('Gold facts 命中数 delta',compared.deltas.final_gold_facts_hit,'count')}${metric('可评分题数 delta',compared.deltas.final_cases_scored,'count')}<dt>Evidence 映射变化</dt><dd>${compared.deltas.mapped_evidence_rows??'—'} 行</dd></dl>
+      ${compared.confounders.length?`<p class="eval-muted">无法归因的差异（不阻断 delta）：${esc(compared.confounders.join(', '))}</p>`:'<p class="eval-muted">未检测到常见混淆因素。</p>'}
+      <details><summary>逐题动作变化（${actionChanges.length}）</summary><div class="eval-table-scroll"><table><thead><tr><th>Case</th><th>基线动作</th><th>对比动作</th></tr></thead><tbody>${actionChanges.join('')||'<tr><td colspan="3">无变化</td></tr>'}</tbody></table></div></details>
+      <details><summary>逐题 Recall 变化（${recallChanges?compared.recall_changes.length:0}）</summary><div class="eval-table-scroll"><table><thead><tr><th>Case</th><th>基线：状态 / 最终命中 / 候选命中</th><th>对比：状态 / 最终命中 / 候选命中</th><th>命中变化：最终 / 候选</th></tr></thead><tbody>${recallChanges||'<tr><td colspan="4">无变化</td></tr>'}</tbody></table></div></details>`;
+  }).catch(error=>{host.innerHTML=`<span class="eval-status drift">读取比较报告失败：${esc(error.message)}</span>`});
+}
+async function runEvaluation(mode){
+  if(activeEvalController)return;
+  const controller=new AbortController();activeEvalController=controller;
+  lastEvalReport=null;q('eval-download').disabled=true;
+  const target=q('eval-target').value;
+  const eligible=target==='ai-qa'?decisionCohortSize():recallCohortSize();
+  const maxCases=target==='ai-qa'?0:Number(q('eval-max-cases').value||0);
+  const total=maxCases>0?Math.min(maxCases,eligible):eligible;
+  q('eval-progress').max=Math.max(1,total);q('eval-progress').value=0;q('eval-progress-wrap').hidden=false;
+  q('eval-status').textContent=`正在准备 ${total} 道题…`;
+  document.querySelectorAll('#eval-actions [data-mode]').forEach(button=>{button.disabled=true});
+  q('eval-cancel').hidden=false;
+  try{
+    const response=await fetch('/api/eval/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,config:buildEvalConfig()}),signal:controller.signal});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||`启动评测失败（HTTP ${response.status}）`)}
+    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+    while(true){
+      const {value,done}=await reader.read();buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});
+      const lines=buffer.split('\n');buffer=lines.pop()||'';
+      for(const line of lines){
+        if(!line.trim())continue;
+        const event=JSON.parse(line);
+        if(event.type==='progress'){
+          const progressTotal=event.total||event.report?.evaluation?.cohorts?.decision||total;
+          q('eval-progress').max=Math.max(1,progressTotal);q('eval-progress').value=event.completed;
+          const counts=event.counts||{};
+          const stages=counts.api&&counts.decision&&counts.observation
+            ?` · API ${counts.api.done}/${counts.api.total} · Decision ${counts.decision.done}/${counts.decision.total} · observation ${counts.observation.done}/${counts.observation.total}`
+            :'';
+          q('eval-status').textContent=`已完成 ${event.completed}/${progressTotal} · ${event.case_id}${stages}`;
+        }else if(event.type==='done'){
+          lastEvalReport=event.report;q('eval-download').disabled=false;renderEvalReport(lastEvalReport);
+          const reportTotal=lastEvalReport.evaluation?.cohorts?.decision||lastEvalReport.cases_total||total;
+          q('eval-progress').max=Math.max(1,reportTotal);q('eval-progress').value=reportTotal;q('eval-status').textContent=`完成：${reportTotal} 道题${lastEvalReport.status!=='complete'?` · ${lastEvalReport.status}`:''}`;
+          reportCache.set(lastEvalReport.run_id,lastEvalReport);
+          try{await reportHistory.saveReport(lastEvalReport);await refreshEvalHistory()}catch(error){q('eval-status').textContent+=` · 历史保存失败：${error.message}`}
+        }else if(event.type==='error')throw new Error(event.error||'评测失败');
+      }
+      if(done)break;
+    }
+    if(!lastEvalReport)throw new Error('评测连接结束，但没有收到结果报告');
+  }catch(error){
+    q('eval-status').textContent=error.name==='AbortError'?'已取消本轮，未生成报告':error.message;
+  }finally{
+    activeEvalController=null;
+    document.querySelectorAll('#eval-actions [data-mode]').forEach(button=>{button.disabled=false});
+    renderEvalTarget();
+    q('eval-cancel').hidden=true;
+  }
+}
+q('eval-config').addEventListener('input',event=>{
+  if(['rewrite-endpoint','rewrite-model'].includes(event.target.id))syncModelPreset();
+  if(event.target.id==='ragflow-base-url')syncRagflowPreset();
+  refreshEvalProfileStatus();
+});
+q('eval-config').addEventListener('change',event=>{
+  if(event.target.id==='rewrite-preset'&&event.target.value===MODEL_PRESET.id){
+    q('rewrite-endpoint').value=MODEL_PRESET.endpoint;q('rewrite-model').value=MODEL_PRESET.model;
+  }
+  if(event.target.id==='ragflow-base-preset'&&event.target.value)q('ragflow-base-url').value=event.target.value;
+  if(event.target.id==='eval-target')renderEvalTarget();
+  if(['rewrite-endpoint','rewrite-model'].includes(event.target.id))syncModelPreset();
+  if(event.target.id==='ragflow-base-url')syncRagflowPreset();
+  refreshEvalProfileStatus();
+});
+q('eval-profile-select').addEventListener('change',selectEvalProfile);
+q('eval-profile-save').addEventListener('click',saveEvalProfile);
+q('eval-profile-delete').addEventListener('click',deleteEvalProfile);
+q('eval-history-refresh').addEventListener('click',refreshEvalHistory);
+q('eval-history-clear').addEventListener('click',async()=>{
+  if(!confirm('清空当前浏览器保存的全部评测报告？此操作不可撤销，建议先下载 JSON 备份。'))return;
+  try{await reportHistory.clearReports();reportCache.clear();await refreshEvalHistory();showMsg('已清空本地运行历史')}catch(error){showMsg(error.message,'error')}
+});
+q('eval-compare-base').addEventListener('change',renderComparison);
+q('eval-compare-other').addEventListener('change',renderComparison);
+q('eval-history-list').addEventListener('click',async event=>{
+  const button=event.target.closest('button[data-history-action]');if(!button)return;
+  const report=await getCachedReport(button.dataset.runId);
+  if(button.dataset.historyAction==='open'){
+    lastEvalReport=report;q('eval-download').disabled=false;renderEvalReport(report);updateCohortNote(report);
+    document.getElementById('eval-title').scrollIntoView({behavior:'smooth'});
+  }else if(button.dataset.historyAction==='download'){
+    downloadReport(report);
+  }else if(button.dataset.historyAction==='delete'&&confirm('删除这条运行报告？')){
+    await reportHistory.deleteReport(button.dataset.runId);reportCache.delete(button.dataset.runId);await refreshEvalHistory();
+  }
+});
+q('eval-server-defaults').addEventListener('click',()=>{
+  if(!serverEvalDefaults){refreshEvalProfileStatus('未读取到服务端默认配置。');return}
+  applyServerDefaults({force:true});
+  refreshEvalProfileStatus('已载入服务端默认配置；已配置的 Key / Token 可留空。');
+});
+q('eval-actions').addEventListener('click',event=>{
+  const button=event.target.closest('button');if(!button)return;
+  if(button.id==='eval-cancel'){activeEvalController?.abort();return}
+  if(button.id==='eval-download'&&lastEvalReport){downloadReport(lastEvalReport);return}
+  if(button.dataset.mode)runEvaluation(button.dataset.mode);
+});
 async function load(){
   try{
-    const res=await fetch('/api/state');if(!res.ok)throw new Error('无法载入数据');
+    const [res,defaultsRes]=await Promise.all([fetch('/api/state'),fetch('/api/eval/defaults').catch(()=>null)]);
+    if(!res.ok)throw new Error('无法载入数据');
     Object.assign(state,await res.json());
+    if(defaultsRes?.ok)serverEvalDefaults=await defaultsRes.json();
     for(const fact of state.facts)factText.set(fact.fact_id,fact.fact);
     original=new Map(state.expected_outputs.map(r=>[r.case_id,structuredClone(r)]));
     for(const label of [...new Set(state.cases.map(c=>c.expected_behavior))].sort())q('behavior').add(new Option(label,label));
+    renderDatasetOptions();initializeEvalProfiles();
+    const applied=applyServerDefaults({force:!activeEvalProfileId});
+    if(applied&&!activeEvalProfileId)evalProfileSnapshot=evalFormSnapshot();
+    updateServerCredentialStatus();renderEvalTarget();
+    q('eval-case-count').textContent=`Decision ${decisionCohortSize()} 题 · Recall ${recallCohortSize()} 题`;
+    updateCohortNote();
     render();
+    await refreshEvalHistory();
   }catch(err){showMsg(err.message,'error')}
 }
 load();

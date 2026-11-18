@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT, readJsonl, writeJsonl } from './lib/dataset.mjs';
 
-const version = process.argv[2] || process.env.DATASET_VERSION || 'v1.4';
+const version = process.argv[2] || process.env.DATASET_VERSION || 'v1.5';
 const dir = path.join(REPO_ROOT, 'datasets', version);
 const cases = readJsonl(path.join(dir, 'cases.jsonl'));
 const facts = readJsonl(path.join(dir, 'facts.jsonl'));

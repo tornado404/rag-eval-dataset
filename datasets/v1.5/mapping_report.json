@@ -1,0 +1,109 @@
+{
+  "source_version": "v1.4",
+  "target_version": "v1.5",
+  "generated_at": "2026-11-17T16:05:48.104Z",
+  "source_chunk_dump": "ragflow-old.jsonl",
+  "target_chunk_dump": "ragflow-new.jsonl",
+  "target_datasets": {
+    "DS01": {
+      "id": "6fc656c4dc4811f182a97bfda9b37d41",
+      "name": "Customer Service Scripts-qwen",
+      "document_count": 13,
+      "chunk_count": 131
+    },
+    "DS02": {
+      "id": "7131ca20dc4811f182a97bfda9b37d41",
+      "name": "Medical Research Paper-qwen",
+      "document_count": 245,
+      "chunk_count": 21599
+    },
+    "DS03": {
+      "id": "73843970dc4811f182a97bfda9b37d41",
+      "name": "Medication Guide-qwen",
+      "document_count": 3,
+      "chunk_count": 263
+    }
+  },
+  "summary": {
+    "evidences": 482,
+    "mapped": 479,
+    "unmapped": 3,
+    "mapped_with_multiple_chunks": 54,
+    "unique_target_chunks": 314,
+    "methods": {
+      "chunk_exact": 432,
+      "unmapped": 3,
+      "source_fuzzy_page": 17,
+      "source_contains": 30
+    },
+    "datasets": {
+      "DS01": {
+        "total": 133,
+        "mapped": 130,
+        "unmapped": 3,
+        "mapped_with_multiple_chunks": 0,
+        "methods": {
+          "chunk_exact": 124,
+          "unmapped": 3,
+          "source_contains": 6
+        }
+      },
+      "DS02": {
+        "total": 197,
+        "mapped": 197,
+        "unmapped": 0,
+        "mapped_with_multiple_chunks": 53,
+        "methods": {
+          "chunk_exact": 166,
+          "source_fuzzy_page": 17,
+          "source_contains": 14
+        }
+      },
+      "DS03": {
+        "total": 152,
+        "mapped": 152,
+        "unmapped": 0,
+        "mapped_with_multiple_chunks": 1,
+        "methods": {
+          "chunk_exact": 142,
+          "source_contains": 10
+        }
+      }
+    }
+  },
+  "rules": [
+    "优先使用旧 chunk 正文在新 qwen 库中做规范化精确匹配或包含匹配。",
+    "旧 chunk 无法匹配时，回退到 evidence.source_text 的精确/包含匹配。",
+    "仅对同文档名、长文本且 bigram 覆盖率不低于 0.55 的页级分块做保守模糊匹配。",
+    "未匹配 evidence 不保留旧 chunk ID，并在评测中按不可评分处理。"
+  ],
+  "unmapped": [
+    {
+      "evidence_id": "E00096",
+      "dataset_id": "DS01",
+      "document_name": "z1658-public-nav 公共流程导航（ZOYEN-1658 合成）.txt",
+      "section": "z1658-public-nav / M0001（如何预约一次检测？）",
+      "source_text": "预约入口：小程序检测页。",
+      "method": "unmapped",
+      "chunk_count": 0
+    },
+    {
+      "evidence_id": "E00097",
+      "dataset_id": "DS01",
+      "document_name": "z1658-public-nav 公共流程导航（ZOYEN-1658 合成）.txt",
+      "section": "z1658-public-nav / M0004（我要在哪里提交问题反馈？）",
+      "source_text": "帮助与反馈页提供问题反馈入口。",
+      "method": "unmapped",
+      "chunk_count": 0
+    },
+    {
+      "evidence_id": "E00466",
+      "dataset_id": "DS01",
+      "document_name": "z1658-public-nav 公共流程导航（ZOYEN-1658 合成）.txt",
+      "section": "z1658-public-nav / M0005（怎么上传我的检测报告？）",
+      "source_text": "报告页提供上传入口。",
+      "method": "unmapped",
+      "chunk_count": 0
+    }
+  ]
+}

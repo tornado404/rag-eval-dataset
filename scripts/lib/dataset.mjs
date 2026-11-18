@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 export const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 
@@ -35,6 +36,83 @@ export function loadDataset(version) {
     'expected_outputs',
   ];
   return Object.fromEntries(names.map((name) => [name, readJsonl(path.join(dir, `${name}.jsonl`))]));
+}
+
+export function loadExpectedActionMap(version) {
+  return JSON.parse(fs.readFileSync(path.join(datasetDir(version), 'expected_actions.json'), 'utf8'));
+}
+
+export function stableDigest(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function directExpectedAction(behavior, rules) {
+  return Object.prototype.hasOwnProperty.call(rules, behavior) ? rules[behavior] : null;
+}
+
+export function validateExpectedActionMap(data, actionMap) {
+  const errors = [];
+  if (actionMap.schema_version !== 'expected-actions/v1') {
+    errors.push(`expected_actions: unsupported schema_version ${actionMap.schema_version}`);
+  }
+  if (actionMap.dataset_version !== 'v1.5') {
+    errors.push(`expected_actions: dataset_version must be v1.5, got ${actionMap.dataset_version}`);
+  }
+  const rules = actionMap.behavior_rules || {};
+  const requiredRules = {
+    answer: 'answer',
+    clarify: 'clarify',
+    refuse_compliance: 'compliance_block',
+    escalate_human: 'escalate_human',
+    insufficient_evidence: 'insufficient_evidence',
+  };
+  for (const [behavior, expectedAction] of Object.entries(requiredRules)) {
+    if (rules[behavior] !== expectedAction) {
+      errors.push(`expected_actions: ${behavior} must map to ${expectedAction}, got ${rules[behavior]}`);
+    }
+  }
+
+  const outputs = new Map(data.expected_outputs.map((row) => [row.case_id, row]));
+  const caseIds = new Set(data.cases.map((row) => row.case_id));
+  const unscored = new Set(actionMap.unscored_case_ids || []);
+  let answerCount = 0;
+  let scoreableCount = 0;
+
+  for (const caseId of caseIds) {
+    const entry = actionMap.cases?.[caseId];
+    if (!entry) {
+      errors.push(`expected_actions: missing case ${caseId}`);
+      continue;
+    }
+    const output = outputs.get(caseId);
+    const behavior = output?.expected_behavior;
+    const directAction = directExpectedAction(behavior, rules);
+    if (unscored.has(caseId) || behavior === 'refuse_or_insufficient_evidence') {
+      if (entry.scoreable || entry.expected_action !== null) {
+        errors.push(`expected_actions: ${caseId} must stay unscored`);
+      }
+      if (behavior === 'refuse_or_insufficient_evidence' && !unscored.has(caseId)) {
+        errors.push(`expected_actions: ${caseId} legacy label missing from unscored_case_ids`);
+      }
+      continue;
+    }
+    scoreableCount += 1;
+    if (!entry.scoreable || entry.expected_action !== directAction) {
+      errors.push(`expected_actions: ${caseId} expected ${directAction}, got ${entry.expected_action} (scoreable=${entry.scoreable})`);
+    }
+    if (behavior === 'answer') answerCount += 1;
+  }
+
+  for (const caseId of Object.keys(actionMap.cases || {})) {
+    if (!caseIds.has(caseId)) errors.push(`expected_actions: unknown case ${caseId}`);
+  }
+  for (const caseId of unscored) {
+    if (!caseIds.has(caseId)) errors.push(`expected_actions: unknown unscored case ${caseId}`);
+  }
+  if (caseIds.size !== 163) errors.push(`expected_actions: expected 163 cases, got ${caseIds.size}`);
+  if (answerCount !== 149) errors.push(`expected_actions: expected 149 answer cases, got ${answerCount}`);
+  if (scoreableCount !== 158) errors.push(`expected_actions: expected 158 scoreable cases, got ${scoreableCount}`);
+  return errors;
 }
 
 export function validateDataset(data) {
