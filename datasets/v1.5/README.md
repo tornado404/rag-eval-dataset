@@ -61,6 +61,7 @@ node scripts/build_v15.mjs /tmp/ragflow-old.jsonl /tmp/ragflow-new.jsonl
 
 ## 评测口径
 
-- 原始候选层使用 `ragflow_chunk_id` 与 `ragflow_candidate_chunk_ids_at_12` 的交集计算 `Recall@12`。
-- AI 问答链路使用后端观测中的 `final_grounding_chunks` 计算最终证据池的 `Recall@K` / `Hit@K`。
+- 原始候选层使用 `ragflow_chunk_id` 与 v2 观测 `ragflow_candidates_at_12[].chunk_id` 的交集计算 `Recall@12`；旧版 `ragflow_candidate_chunk_ids_at_12` 仍兼容。
+- AI 问答链路使用 v2 观测 `final_grounding[].chunk_id` 计算最终证据池的 `Recall@K` / `Hit@K`；旧版 `final_grounding_chunks` 仍兼容。
+- `document_id` / `evidence_id` 不具备 chunk 粒度，不能替代 `chunk_id` 参与 Gold 匹配。缺少 chunk 级字段的旧版 observation 标记为 `legacy_schema_unscorable`，不进入 Recall/Hit 分母。
 - 单轮题目通常会在 Query 改写门禁处跳过改写（`gate_skip`）；要验证服务内 Query 改写是否实际生效，应使用同一 session 的多轮 followup/correction 题。

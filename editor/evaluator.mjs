@@ -928,6 +928,7 @@ function qaGoldSummary(records, pick) {
     cases_unscorable_gold: present.length - scored.length,
     cases_without_results: records.length - present.length,
     cases_call_error: records.filter((entry) => Boolean(entry.error)).length,
+    cases_failed: records.filter((entry) => Boolean(entry.error)).length,
     cases_with_gold_hit: casesHit,
     hit_at_k: scored.length ? casesHit / scored.length : null,
     gold_facts_scored: factsTotal,
@@ -939,11 +940,68 @@ function qaGoldSummary(records, pick) {
   };
 }
 
+function qaObservationSchemaVersion(observation) {
+  const raw = observation?.metrics_schema_version;
+  if (raw === null || raw === undefined || raw === '') return null;
+  const version = Number(raw);
+  return Number.isFinite(version) ? version : null;
+}
+
+function qaObservationChunkState(observation) {
+  const finalStructured = Array.isArray(observation?.final_grounding)
+    ? observation.final_grounding
+    : [];
+  const candidateStructured = Array.isArray(observation?.ragflow_candidates_at_12)
+    ? observation.ragflow_candidates_at_12
+    : [];
+  const hasStructuredChunks = Array.isArray(observation?.final_grounding)
+    || Array.isArray(observation?.ragflow_candidates_at_12);
+  const hasChunkArrays = Array.isArray(observation?.final_grounding_chunks)
+    || Array.isArray(observation?.ragflow_candidate_chunk_ids_at_12);
+  const finalChunks = hasStructuredChunks
+    ? uniqueIds(finalStructured.map((item) => item?.chunk_id))
+    : uniqueIds(observation?.final_grounding_chunks || []);
+  const candidateChunks = hasStructuredChunks
+    ? uniqueIds(candidateStructured.map((item) => item?.chunk_id)).slice(0, TOP_K)
+    : uniqueIds(observation?.ragflow_candidate_chunk_ids_at_12 || []).slice(0, TOP_K);
+  const hasChunkMetrics = hasStructuredChunks || hasChunkArrays;
+  return {
+    schemaVersion: qaObservationSchemaVersion(observation),
+    hasChunkMetrics,
+    legacySchemaUnscorable: !hasChunkMetrics,
+    finalChunks,
+    candidateChunks,
+    finalStructured: finalStructured
+      .map((item, index) => ({
+        chunk_id: String(item?.chunk_id || '').trim(),
+        document_id: String(item?.document_id || '').trim(),
+        citation_id: String(item?.citation_id || '').trim(),
+        source: String(item?.source || '').trim(),
+        rank: Number.isFinite(Number(item?.rank)) ? Number(item.rank) : index + 1,
+      }))
+      .filter((item) => item.chunk_id || item.document_id || item.citation_id),
+    candidateStructured: candidateStructured
+      .map((item, index) => ({
+        chunk_id: String(item?.chunk_id || '').trim(),
+        document_id: String(item?.document_id || '').trim(),
+        dataset_id: String(item?.dataset_id || '').trim(),
+        source: String(item?.source || '').trim(),
+        rank: Number.isFinite(Number(item?.rank)) ? Number(item.rank) : index + 1,
+        score: Number.isFinite(Number(item?.score)) ? Number(item.score) : null,
+        query_index: item?.query_index === null || item?.query_index === undefined
+          ? null
+          : Number(item.query_index),
+      }))
+      .filter((item) => item.chunk_id || item.document_id),
+  };
+}
+
 export function projectQaDecision(entry) {
   const decision = entry?.decision || {};
   return {
     mode: entry?.mode ?? null,
     action: decision.action ?? null,
+    action_reason: decision.action_reason ?? null,
     refuse_domain: decision.refuse_domain ?? null,
     clarify: decision.clarify ?? null,
     insufficient_evidence: decision.insufficient_evidence ?? null,
@@ -957,6 +1015,7 @@ export function projectQaDecision(entry) {
 
 function projectQaObservation(observation) {
   const rewrite = observation?.rewrite || {};
+  const chunkState = qaObservationChunkState(observation);
   const finiteOrNull = (value) => {
     if (value === null || value === undefined || value === '') return null;
     const number = Number(value);
@@ -965,6 +1024,7 @@ function projectQaObservation(observation) {
   return {
     route: observation?.route ?? null,
     route_domains: Array.isArray(observation?.route_domains) ? observation.route_domains : [],
+    standalone_query: observation?.standalone_query ?? null,
     final_ragflow_queries: Array.isArray(observation?.final_ragflow_queries)
       ? observation.final_ragflow_queries
       : [],
@@ -979,9 +1039,14 @@ function projectQaObservation(observation) {
       fallback_reason: rewrite.fallback_reason ?? null,
       latency_ms: finiteOrNull(rewrite.latency_ms),
     },
-    ragflow_candidate_chunk_ids_at_12: uniqueIds(observation?.ragflow_candidate_chunk_ids_at_12 || []),
-    final_grounding_chunks: uniqueIds(observation?.final_grounding_chunks || []),
-    final_grounding_count: finiteOrNull(observation?.final_grounding_count),
+    metrics_schema_version: chunkState.schemaVersion,
+    chunk_metrics_available: chunkState.hasChunkMetrics,
+    legacy_schema_unscorable: chunkState.legacySchemaUnscorable,
+    ragflow_candidate_chunk_ids_at_12: chunkState.candidateChunks,
+    ragflow_candidates_at_12: chunkState.candidateStructured,
+    final_grounding_chunks: chunkState.finalChunks,
+    final_grounding: chunkState.finalStructured,
+    final_grounding_count: chunkState.hasChunkMetrics ? chunkState.finalChunks.length : null,
     duration_ms: finiteOrNull(observation?.duration_ms),
   };
 }
@@ -997,6 +1062,8 @@ function countBy(values) {
 
 export function summarizeAiQaRecords(records) {
   const withObservation = records.filter((row) => row.observation);
+  const withChunkObservation = withObservation.filter((row) => row.observation.chunk_metrics_available);
+  const legacyUnscorable = withObservation.filter((row) => row.observation.legacy_schema_unscorable);
   const finalSummary = qaGoldSummary(records, (row) => row.final);
   const rawSummary = qaGoldSummary(records, (row) => row.raw_ragflow);
   const qaLatencies = records.map((row) => row.qa?.latency_ms).filter(Number.isFinite);
@@ -1004,6 +1071,7 @@ export function summarizeAiQaRecords(records) {
   const decided = records.filter((row) => row.decision);
   const earlyExit = records.filter((row) => !row.observation && !row.error && row.decision);
   const decision = {
+    cases_observed: decided.length,
     cases_decided: decided.length,
     cases_with_turn_observation: withObservation.length,
     cases_early_exit: earlyExit.length,
@@ -1011,7 +1079,7 @@ export function summarizeAiQaRecords(records) {
     modes: countBy(decided.map((row) => row.decision.mode)),
     actions: countBy(decided.map((row) => row.decision.action)),
     early_exit_actions: countBy(earlyExit.map((row) => row.decision.action)),
-    engine_active_cases: withObservation.filter((row) => row.observation.decision_engine_active).length,
+    engine_active_cases: decided.filter((row) => row.decision.mode && row.decision.mode !== 'off').length,
     routes: countBy(withObservation.map((row) => row.observation.route)),
   };
   const queryRewrite = {
@@ -1032,14 +1100,20 @@ export function summarizeAiQaRecords(records) {
     },
     decision,
     query_rewrite: queryRewrite,
+    observation_schema: {
+      cases_with_observation: withObservation.length,
+      cases_chunk_level: withChunkObservation.length,
+      cases_legacy_schema_unscorable: legacyUnscorable.length,
+      schema_versions: countBy(withObservation.map((row) => row.observation.metrics_schema_version ?? 'legacy')),
+    },
   };
 }
 
 export const AI_QA_METRIC_NOTES = {
-  final_grounding: '最终证据池 Recall@K：K 逐题取 turn_observation.final_grounding_count（服务端实际进入回答的证据条数），汇总仅给 K 范围；Gold 按 required facts 的 OR/AND 证据组判定。',
-  ragflow_candidates_at_12: 'RAGFlow 原始候选 Recall@12 / Hit@12：取 merge 之前的专业库 Top-12 chunk ID，代表检索层真实召回能力，与最终证据池口径不同。',
+  final_grounding: '最终证据池 Recall@K：只使用 turn_observation 中的真实 chunk ID（v2 的 final_grounding[].chunk_id 或兼容字段 final_grounding_chunks），K 逐题取最终 chunk 数；汇总仅给 K 范围，Gold 按 required facts 的 OR/AND 证据组判定。',
+  ragflow_candidates_at_12: 'RAGFlow 原始候选 Recall@12 / Hit@12：取 merge 之前的专业库 Top-12 chunk ID（v2 的 ragflow_candidates_at_12[].chunk_id 或兼容字段 ragflow_candidate_chunk_ids_at_12），与最终证据池口径不同。',
   ai_qa: '真实调用 POST /api/v1/qa/turns（deliver=auto），包含 Decision 路由、Query 改写门禁与最终回答装配；单轮题通常 rewrite.called=false、fallback_reason=gate_skip。',
-  observation: '分数只来自后端 qa: turn_observation 日志；无观测的题不进入 Recall/Hit 分母，不使用接口 citations 或答案文本反推。Decision 判为 refuse_domain 等提前返回的题单独统计，不计作接口失败。',
+  observation: '分数只来自后端 qa: turn_observation 日志；无观测或旧版仅有 document/evidence ID、缺少 chunk 级字段的题会标记为 legacy_schema_unscorable，不进入 Recall/Hit 分母，不使用接口 citations 或答案文本反推。',
 };
 
 async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => {} } = {}) {
@@ -1183,14 +1257,15 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
         || logs.bySession.get(row.qa?.session_id);
       if (!observation) continue;
       row.observation = projectQaObservation(observation);
-      const finalIds = uniqueIds(observation.final_grounding_chunks || []);
-      const finalK = Number(observation.final_grounding_count || finalIds.length);
+      if (!row.observation.chunk_metrics_available) continue;
+      const finalIds = row.observation.final_grounding_chunks;
+      const finalK = finalIds.length;
       row.final = {
         ids: finalIds,
         path_latency_ms: row.qa?.latency_ms ?? null,
-        gold: assessGold(row.required_fact_ids, finalIds, groupsByFact, finalK > 0 ? finalK : finalIds.length),
+        gold: assessGold(row.required_fact_ids, finalIds, groupsByFact, finalK),
       };
-      const rawIds = uniqueIds(observation.ragflow_candidate_chunk_ids_at_12 || []).slice(0, TOP_K);
+      const rawIds = row.observation.ragflow_candidate_chunk_ids_at_12;
       row.raw_ragflow = {
         ids: rawIds,
         path_latency_ms: null,
@@ -1204,6 +1279,12 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
       const actionText = Object.entries(earlyExitActions).map(([action, count]) => `${action}=${count}`).join(', ');
       warnings.push(
         `${missing} 题未在 docker logs 中找到 turn_observation；其中 ${earlyExit.length} 题由 Decision 提前返回${actionText ? `（${actionText}）` : ''}，不是接口调用失败。这些题不参与 Recall/Hit 统计，不能用接口 citations 替代。`,
+      );
+    }
+    const legacyUnscorable = records.filter((row) => row.observation?.legacy_schema_unscorable);
+    if (legacyUnscorable.length) {
+      warnings.push(
+        `${legacyUnscorable.length} 题只拿到旧版 observation（仅有 document/evidence ID，缺少 chunk 级字段），已标记为 legacy_schema_unscorable；本轮不会把这些 ID 当作 chunk ID 计算 Recall/Hit。`,
       );
     }
   } catch (error) {

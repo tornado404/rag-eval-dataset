@@ -425,16 +425,17 @@ function formatCounts(counts){
 }
 function renderAiQaReport(report){
   const summary=report.summary||{},final=summary.final_grounding||{},raw=summary.ragflow_candidates_at_12||{};
-  const decision=summary.decision||{},rewrite=summary.query_rewrite||{},latency=summary.service_latency_ms||{};
+  const decision=summary.decision||{},rewrite=summary.query_rewrite||{},latency=summary.service_latency_ms||{},schema=summary.observation_schema||{};
   const cards=[
     metricCard('AI 问答最终证据池',final,{recall:'Gold Recall@K（宏平均）',hit:'Gold Hit@K'}),
     metricCard('RAGFlow 原始候选（merge 前）',raw),
     `<section class="eval-metric-card"><h3>Decision 路由</h3><dl>
-      <dt>观测题数</dt><dd>${decision.cases_observed??0}/${report.cases_total??0}</dd>
+      <dt>Decision 观测题数</dt><dd>${decision.cases_observed??0}/${report.cases_total??0}</dd>
       <dt>引擎实际评估</dt><dd>${decision.engine_active_cases??0}</dd>
       <dt>动作分布</dt><dd>${esc(formatCounts(decision.actions))}</dd>
       <dt>模式分布</dt><dd>${esc(formatCounts(decision.modes))}</dd>
       <dt>路由分布</dt><dd>${esc(formatCounts(decision.routes))}</dd>
+      <dt>Chunk 级观测</dt><dd>${schema.cases_chunk_level??0}/${report.cases_total??0}</dd>
     </dl></section>`,
     `<section class="eval-metric-card"><h3>Query 改写（服务内）</h3><dl>
       <dt>实际调用</dt><dd>${rewrite.called_cases??0}</dd>
@@ -451,10 +452,10 @@ function renderAiQaReport(report){
   ];
   const rows=report.rows||[];
   const details=rows.map(row=>{
-    const obs=row.observation||{},rw=obs.rewrite||{};
-    const rewriteText=rw.applied?esc(obs.standalone_query||''):`未改写 · ${esc(rw.fallback_reason||rw.mode||'无观测')}`;
-    const decisionText=`${esc(obs.decision_action||'—')}${obs.decision_mode?` / ${esc(obs.decision_mode)}`:''}`;
-    const decisionSub=obs.decision_action_reason?`<br><span class="eval-muted">${esc(obs.decision_action_reason)}</span>`:'';
+    const obs=row.observation||{},rw=obs.rewrite||{},dec=row.decision||{};
+    const rewriteText=rw.applied?esc(obs.standalone_query||''):(row.observation?`未改写 · ${esc(rw.fallback_reason||rw.mode||'无观测')}`:`未进入检索 · Decision ${esc(dec.action||'提前返回')}`);
+    const decisionText=`${esc(obs.decision_action||dec.action||'—')}${(obs.decision_mode||dec.mode)?` / ${esc(obs.decision_mode||dec.mode)}`:''}`;
+    const decisionSub=(obs.decision_action_reason||dec.action_reason)?`<br><span class="eval-muted">${esc(obs.decision_action_reason||dec.action_reason)}</span>`:'';
     const chunkPreview=(row.final?.ids||[]).slice(0,2).join(', ');
     return `<tr><td>${esc(row.case_id)}</td><td class="eval-query">${esc(row.question)}</td>
       <td>${decisionText}${decisionSub}</td><td class="eval-query">${rewriteText}</td>
