@@ -49,5 +49,7 @@ jobs:
             echo ''
             echo '- runner: `m3-rag-eval-dataset`'
             echo '- labels: `self-hosted,macOS,ARM64,office`'
-            echo '- service: `http://127.0.0.1:4183/`'
+            echo '- listener: `127.0.0.1:4183`'
+            echo '- local URL: `http://127.0.0.1:4183/`'
+            echo '- LAN URL: emitted by the deploy health check below'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -4,9 +4,11 @@
 import http from 'node:http';
 [REDACTED]
 import { REPO_ROOT, datasetDir, readJsonl, writeJsonl, validateDataset } from '../scripts/lib/dataset.mjs';
+import { normalizeEvaluationRequest, runEvaluation } from './evaluator.mjs';
 
 const PORT = Number(process.env.PORT || 4173);
-const VERSION = process.env.DATASET_VERSION || 'v1.4';
+const BIND_ADDRESS = process.env.BIND_ADDRESS || '127.0.0.1';
+const VERSION = process.env.DATASET_VERSION || 'v1.5';
 const AUTO_COMMIT = process.env.AUTO_COMMIT !== '0';
 const AUTO_PUSH = process.env.AUTO_PUSH === '1';
 const COMMIT_PREFIX = process.env.COMMIT_PREFIX || 'dataset(editor)';
@@ -21,6 +23,94 @@ const EDITABLE_FIELDS = [
 ];
 
 const outputsPath = path.join(datasetDir(VERSION), 'expected_outputs.jsonl');
+const EVAL_CONFIG_FILE = process.env.EVAL_CONFIG_FILE || path.join(os.homedir(), '.config', 'rag-eval-dataset', 'eval.env');
+
+function readEnvFile(file) {
+  [REDACTED]
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return values;
+  }
+  for (const rawLine of text.split(/\r?\n/)) {
+    [REDACTED]
+    [REDACTED]
+    [REDACTED]
+    [REDACTED]
+    [REDACTED]
+    const key = normalized.slice(0, separator).trim();
+    [REDACTED]
+    [REDACTED]
+      [REDACTED]
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+const EVAL_FILE_ENV = readEnvFile(EVAL_CONFIG_FILE);
+
+function evalEnv(name) {
+  const value = process.env[name] ?? EVAL_FILE_ENV[name];
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function splitList(value) {
+  return String(value || '').split(/[\s,，]+/).map((item) => item.trim())[REDACTED];
+}
+
+function buildEvalDefaults() {
+  const maxCases = Number(evalEnv('EVAL_MAX_CASES') || 0);
+  const configuredTarget = evalEnv('EVAL_TARGET');
+  return {
+    target: ['qa-probe', 'ai-qa'].includes(configuredTarget) ? configuredTarget : 'ragflow',
+    rewriteEndpoint: evalEnv('EVAL_REWRITE_ENDPOINT') || 'http://127.0.0.1:8000/v1/chat/completions',
+    rewriteModel: evalEnv('EVAL_REWRITE_MODEL') || 'Qwen3.6-35B-A3B-4bit',
+    ragflowBaseUrl: evalEnv('RAGFLOW_BASE_URL') || 'http://127.0.0.1:8088',
+    qaBaseUrl: evalEnv('M3_BASE_URL') || '[REDACTED]',
+    qaBackendContainer: evalEnv('M3_BACKEND_CONTAINER'),
+    datasetIds: splitList(evalEnv('RAGFLOW_DATASET_IDS')),
+    maxCases: Number.isInteger(maxCases) && maxCases >= 0 && maxCases <= 1000 ? maxCases : 0,
+    credentials: {
+      rewriteApiKey: Boolean(evalEnv('EVAL_REWRITE_API_KEY')),
+      ragflowApiKey: Boolean(evalEnv('RAGFLOW_API_KEY')),
+      qaToken: Boolean(evalEnv('M3_ADMIN_TOKEN')),
+      qaUserAuth: Boolean(evalEnv('M3_QA_USER_JWT') || evalEnv('M3_QA_USER_REFRESH_TOKEN')),
+    },
+  };
+}
+
+function withServerDefaults(body) {
+  const defaults = buildEvalDefaults();
+  const source = body.config && typeof body.config === 'object' && !Array.isArray(body.config) ? body.config : {};
+  const config = { ...source };
+  config.target = config.target || defaults.target;
+  config.rewriteEndpoint = config.rewriteEndpoint || defaults.rewriteEndpoint;
+  config.rewriteModel = config.rewriteModel || defaults.rewriteModel;
+  config.rewriteApiKey = config.rewriteApiKey || evalEnv('EVAL_REWRITE_API_KEY');
+  if (config.maxCases === undefined || config.maxCases === null || config.maxCases === '') {
+    config.maxCases = defaults.maxCases;
+  }
+  if (config.target === 'ragflow') {
+    config.ragflowBaseUrl = config.ragflowBaseUrl || defaults.ragflowBaseUrl;
+    config.ragflowApiKey = config.ragflowApiKey || evalEnv('RAGFLOW_API_KEY');
+    const datasetIds = Array.isArray(config.datasetIds)
+      ? config.datasetIds.map((item) => String(item).trim())[REDACTED]
+      : [];
+    config.datasetIds = datasetIds.length ? datasetIds : defaults.datasetIds;
+  } else if (config.target === 'qa-probe') {
+    config.qaBaseUrl = config.qaBaseUrl || defaults.qaBaseUrl;
+    config.qaToken = config.qaToken || evalEnv('M3_ADMIN_TOKEN');
+  } else if (config.target === 'ai-qa') {
+    config.qaBaseUrl = config.qaBaseUrl || defaults.qaBaseUrl;
+    // 用户 JWT / refresh token 只从服务端环境读取，浏览器永远拿不到。
+    config.qaUserJwt = evalEnv('M3_QA_USER_JWT');
+    config.qaRefreshToken = evalEnv('M3_QA_USER_REFRESH_TOKEN');
+    config.qaBackendContainer = config.qaBackendContainer || evalEnv('M3_BACKEND_CONTAINER');
+  }
+  return { ...body, config };
+}
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -74,6 +164,8 @@ function loadState() {
     cases: readJsonl(path.join(dir, 'cases.jsonl')),
     facts: readJsonl(path.join(dir, 'facts.jsonl')),
     evidences: readJsonl(path.join(dir, 'evidences.jsonl')),
+    fact_evidence_relations: readJsonl(path.join(dir, 'fact_evidence_relations.jsonl')),
+    datasets: readJsonl(path.join(dir, 'datasets.jsonl')),
     expected_outputs: readJsonl(path.join(dir, 'expected_outputs.jsonl')),
   };
 }
@@ -84,6 +176,48 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/state') {
       return send(res, 200, loadState());
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/eval/defaults') {
+      return send(res, 200, buildEvalDefaults());
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/eval/run') {
+      const body = withServerDefaults(await safeBody(req));
+      let request;
+      try {
+        request = normalizeEvaluationRequest(body);
+      } catch (error) {
+        return send(res, 400, { error: error.message || 'invalid evaluation settings' });
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Cache-Control': 'no-store, no-transform',
+        'X-Accel-Buffering': 'no',
+      });
+      const controller = new AbortController();
+      res.on('close', () => {
+        if (!res.writableEnded) controller.abort();
+      });
+      const emit = (event) => {
+        if (res.destroyed || res.writableEnded) return false;
+        res.write(`${JSON.stringify(event)}\n`);
+        return true;
+      };
+
+      try {
+        const report = await runEvaluation(loadState(), request, {
+          signal: controller.signal,
+          onProgress: (progress) => emit({ type: 'progress', ...progress }),
+        });
+        emit({ type: 'done', report });
+      } catch (error) {
+        if (!controller.signal.aborted) emit({ type: 'error', error: error.message || 'evaluation failed' });
+      } finally {
+        if (!res.destroyed) res.end();
+      }
+      return;
     }
 
     if (req.method === 'POST' && url.pathname === '/api/save') {
@@ -118,6 +252,16 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, html, 'text/html; charset=utf-8');
     }
 
+    if (req.method === 'GET' && url.pathname === '/report-history.js') {
+      const script = fs.readFileSync(path.join(REPO_ROOT, 'editor', 'report-history.js'));
+      return send(res, 200, script, 'text/javascript; charset=utf-8');
+    }
+
+    if (req.method === 'GET' && url.pathname === '/metrics.mjs') {
+      const script = fs.readFileSync(path.join(REPO_ROOT, 'editor', 'metrics.mjs'));
+      return send(res, 200, script, 'text/javascript; charset=utf-8');
+    }
+
     return send(res, 404, { error: 'not found' });
   } catch (error) {
     console.error(error);
@@ -125,8 +269,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Dataset editor: http://127.0.0.1:${PORT}`);
+server.listen(PORT, BIND_ADDRESS, () => {
+  console.log(`Dataset editor listening on ${BIND_ADDRESS}:${PORT}`);
+  if (BIND_ADDRESS !== '127.0.0.1') console.log(`Local URL: http://${BIND_ADDRESS}:${PORT}/`);
+  const defaults = buildEvalDefaults();
+  console.log(`Eval config: ${EVAL_CONFIG_FILE}${Object.keys(EVAL_FILE_ENV).length ? '' : ' (not found)'}`);
+  console.log(`Eval default target: ${defaults.target} | ragflow key: ${defaults.credentials.ragflowApiKey ? 'configured' : 'missing'} | model key: ${defaults.credentials.rewriteApiKey ? 'configured' : 'missing'}`);
+  console.log(`AI QA real-path credential: ${defaults.credentials.qaUserAuth ? 'configured' : 'missing'} | backend container: ${defaults.qaBackendContainer || 'auto-detect'}`);
   console.log(`Dataset version: ${VERSION}`);
   console.log(`Auto commit: ${AUTO_COMMIT ? 'on' : 'off'} | Auto push: ${AUTO_PUSH ? 'on' : 'off'}`);
   console.log(`Exit: Ctrl+C`);

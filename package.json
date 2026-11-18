@@ -5,7 +5,8 @@
   "description": "Editable, git-tracked RAGFlow evaluation datasets for Recall@12 and HIT.",
   "scripts": {
     "editor": "node editor/server.mjs",
-    "validate": "node scripts/validate.mjs"
+    "validate": "node scripts/validate.mjs",
+    "test": "node --test test"
   },
   "engines": {
     "node": ">=20"

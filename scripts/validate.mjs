@@ -1,13 +1,16 @@
 [REDACTED]
 [REDACTED]
-import { REPO_ROOT, datasetDir, loadDataset, validateDataset } from './lib/dataset.mjs';
+import { REPO_ROOT, datasetDir, loadDataset, loadExpectedActionMap, validateDataset, validateExpectedActionMap } from './lib/dataset.mjs';
 
 const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'MANIFEST.json'), 'utf8'));
 let failed = false;
 
 for (const version of manifest.versions) {
   const data = loadDataset(version.id);
-  const errors = validateDataset(data);
+  const errors = [
+    ...validateDataset(data),
+    ...(version.id === 'v1.5' ? validateExpectedActionMap(data, loadExpectedActionMap(version.id)) : []),
+  ];
   if (errors.length) {
     failed = true;
     console.error(`FAIL ${version.id}`);
