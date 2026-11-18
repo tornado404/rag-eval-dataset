@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { loadExpectedActionMap, stableDigest } from '../scripts/lib/dataset.mjs';
+import { aggregateDecisionAttribution, compareReports, scoreDecisionMetrics, scoreRecallMetrics } from './metrics.mjs';
 
 const TOP_K = 12;
 const TARGETS = new Set(['qa-probe', 'ragflow', 'ai-qa']);
@@ -14,6 +16,19 @@ const QA_TOKEN_REFRESH_MS = 9 * 60 * 1000;
 const QA_MAX_CONSECUTIVE_FAILURES = 3;
 const QA_LOG_MAX_BYTES = 64 * 1024 * 1024;
 const QA_EVAL_CLIENT_PREFIX = 'eval-';
+export const REPORT_SCHEMA_VERSION = 'evaluation-report/v1';
+export const METRIC_SCHEMA_VERSION = 'evaluation-metrics/v1';
+export const EVALUATOR_VERSION = 'ai-qa-eval/2.0.0';
+const DECISION_ACTIONS = ['answer', 'clarify', 'compliance_block', 'escalate_human', 'insufficient_evidence', 'refuse_domain', 'other'];
+const OBSERVATION_RETRIEVAL_STATES = new Set(['not_attempted', 'effective_empty', 'unavailable', 'success']);
+const SECRET_PATTERNS = [
+  ['bearer token', /Bearer\s+[A-Za-z0-9._~+/=-]+/gi],
+  ['jwt', /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g],
+  ['api key', /\b(?:sk|ak|api[_-]?key)[-_][A-Za-z0-9_-]{8,}\b/gi],
+  ['authorization header', /\bauthorization\s*[:=]/gi],
+  ['password assignment', /\b(?:password|passwd|pwd)\s*[:=]/gi],
+  ['credential-bearing URL', /[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^/\s@]+@/gi],
+];
 const QA_CONVERSATION_PAGE_LIMIT = 50;
 const QA_CONVERSATION_MAX_PAGES = 200;
 const DOCKER_BIN_CANDIDATES = [
@@ -38,6 +53,100 @@ function redactSensitive(text) {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>')
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '<redacted-jwt>')
     .replace(/\b(?:sk|ak|key)[-_][A-Za-z0-9_-]{8,}\b/gi, '<redacted-key>');
+}
+
+function safeText(value, maxLength = 240) {
+  return redactSensitive(String(value ?? '')).replace(/\s+/g, ' ').slice(0, maxLength);
+}
+
+export function scanReportSecrets(value, path = 'report') {
+  const findings = [];
+  const visit = (node, nodePath) => {
+    if (typeof node === 'string') {
+      for (const [label, pattern] of SECRET_PATTERNS) {
+        pattern.lastIndex = 0;
+        if (pattern.test(node)) findings.push(`${nodePath}: ${label}`);
+      }
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, child] of Object.entries(node)) visit(child, `${nodePath}.${key}`);
+  };
+  visit(value, path);
+  return findings;
+}
+
+function firstText(values) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function safeRunMetadata(config) {
+  const decisionMode = firstText([
+    process.env.QA_DECISION_MODE,
+    process.env.INTENT_DECISION_MODE,
+    process.env.INTENT_DECISION_FAMILY,
+    process.env.DECISION_MODE,
+  ]) || 'unknown';
+  const configFingerprint = firstText([
+    process.env.QA_CONFIG_FINGERPRINT,
+    process.env.INTENT_CONFIG_FINGERPRINT,
+  ]) || 'unavailable';
+  return {
+    build_sha: firstText([process.env.GITHUB_SHA, process.env.BUILD_SHA, process.env.QA_BUILD_SHA]) || 'unknown',
+    correlation_id: firstText([process.env.QA_CORRELATION_ID, process.env.CORRELATION_ID]) || 'unavailable',
+    corpus_snapshot: firstText([process.env.QA_CORPUS_SNAPSHOT, process.env.RAGFLOW_CORPUS_SNAPSHOT]) || 'unavailable',
+    decision: {
+      mode: decisionMode,
+      family: firstText([process.env.INTENT_DECISION_FAMILY, process.env.QA_DECISION_FAMILY]) || 'auto',
+      preference: firstText([process.env.INTENT_DECISION_MODEL, process.env.QA_DECISION_PREFERENCE]) || 'auto',
+      model_id: firstText([
+        process.env.QWEN_DECISION_MODEL,
+        process.env.INTENT_DECISION_MODEL,
+        process.env.JEV_DECISION_MODEL,
+      ]) || 'unknown',
+    },
+    config: {
+      fingerprint: configFingerprint,
+      intent_config_version: firstText([process.env.INTENT_CONFIG_VERSION, process.env.QA_INTENT_CONFIG_VERSION]) || 'unavailable',
+    },
+    qa_base_url: config.qaBaseUrl,
+    backend_container: firstText([config.qaBackendContainer, process.env.M3_BACKEND_CONTAINER]) || 'unavailable',
+    metadata_status: decisionMode === 'unknown' && configFingerprint === 'unavailable' ? 'unavailable' : 'reported',
+  };
+}
+
+function projectQaDecisionTrace(entry, fallbackDecision) {
+  const trace = entry?.trace || {};
+  const decision = fallbackDecision || {};
+  return {
+    status: entry ? 'observed' : 'unavailable',
+    unavailable_reason: entry ? null : 'missing_decision_trace_log',
+    mode: entry?.mode ?? fallbackDecision?.mode ?? null,
+    intent: firstText([trace.intent, trace.intent_name, decision.intent]) || null,
+    action: firstText([trace.action, decision.action]) || null,
+    action_reason: firstText([trace.action_reason, decision.action_reason]) || null,
+    safety_flags: {
+      refuse_domain: trace.refuse_domain ?? decision.refuse_domain ?? null,
+      clarify: trace.clarify ?? decision.clarify ?? null,
+      insufficient_evidence: trace.insufficient_evidence ?? decision.insufficient_evidence ?? null,
+      safety_signal: trace.safety_signal ?? decision.safety_signal ?? null,
+      emergency_signal: trace.emergency_signal ?? decision.emergency_signal ?? null,
+      compliance_block: trace.compliance_block ?? decision.compliance_block ?? null,
+      safety_clarify: trace.safety_clarify ?? decision.safety_clarify ?? null,
+    },
+    source: firstText([trace.source, trace.classifier_source, trace.model_source]) || 'unavailable',
+    fallback_category: firstText([trace.fallback_category, trace.fallback_source, trace.reason_code]) || null,
+    model_id: firstText([trace.model_id, trace.model, trace.classifier]) || 'unknown',
+    fingerprint: firstText([trace.fingerprint, trace.config_fingerprint]) || 'unavailable',
+    build_sha: firstText([trace.build_sha, trace.build]) || 'unknown',
+    correlation_id: firstText([trace.correlation_id, trace.request_id]) || 'unavailable',
+    config_family: firstText([trace.config_family, trace.family]) || 'unavailable',
+    config_preference: firstText([trace.config_preference, trace.preference]) || 'unavailable',
+  };
 }
 
 function upstreamErrorDetail(text) {
@@ -103,6 +212,7 @@ export function normalizeEvaluationRequest(body) {
       throw new Error('AI 问答真实链路需要服务端配置 M3_QA_USER_JWT 或 M3_QA_USER_REFRESH_TOKEN');
     }
     config.qaBackendContainer = String(raw.qaBackendContainer || '').trim();
+    config.maxCases = 0;
   } else {
     config.rewriteEndpoint = validHttpUrl(raw.rewriteEndpoint, 'Query 改写 API 地址');
     config.rewriteModel = requiredText(raw.rewriteModel, 'Query 改写模型');
@@ -123,6 +233,8 @@ export function normalizeEvaluationRequest(body) {
   } else {
     config.datasetIds = [];
   }
+
+  if (target === 'ai-qa') return { mode, config };
 
   const maxCases = Number(raw.maxCases || 0);
   if (!Number.isInteger(maxCases) || maxCases < 0 || maxCases > 1000) {
@@ -541,7 +653,27 @@ export function parseQaObservations(logText) {
   const byQuestion = new Map();
   const bySession = new Map();
   const decisionsBySession = new Map();
+  const decisionTracesBySession = new Map();
   for (const line of String(logText || '').split('\n')) {
+    const traceMarker = 'qa: decision_trace session=';
+    const traceAt = line.indexOf(traceMarker);
+    if (traceAt >= 0) {
+      const rest = line.slice(traceAt + traceMarker.length);
+      const modeAt = rest.indexOf(' mode=');
+      const payloadAt = rest.indexOf(' trace=', modeAt + 1);
+      if (modeAt > 0 && payloadAt > modeAt) {
+        const sessionId = rest.slice(0, modeAt).trim();
+        const mode = rest.slice(modeAt + ' mode='.length, payloadAt).trim();
+        try {
+          decisionTracesBySession.set(sessionId, {
+            mode,
+            trace: JSON.parse(rest.slice(payloadAt + ' trace='.length)),
+          });
+        } catch {
+          // 截断的 trace 行跳过；对应题目会明确标记为缺少模型归因。
+        }
+      }
+    }
     const decisionMarker = 'qa: decision_engine session=';
     const decisionAt = line.indexOf(decisionMarker);
     if (decisionAt >= 0) {
@@ -578,7 +710,7 @@ export function parseQaObservations(logText) {
       // 日志行被截断或并发写入时跳过，缺失的题会明确标记为不可评分。
     }
   }
-  return { byClientTurn, byQuestion, bySession, decisionsBySession };
+  return { byClientTurn, byQuestion, bySession, decisionsBySession, decisionTracesBySession };
 }
 
 async function readQaObservations(config, sinceIso) {
@@ -1127,21 +1259,30 @@ export function summarizeAiQaRecords(records) {
   };
 }
 
+export { aggregateDecisionAttribution, compareReports, scoreDecisionMetrics, scoreRecallMetrics };
+
 export const AI_QA_METRIC_NOTES = {
-  final_grounding: '最终证据池 Recall@K：只使用 turn_observation 中的真实 chunk ID（v2 的 final_grounding[].chunk_id 或兼容字段 final_grounding_chunks），K 逐题取最终 chunk 数；汇总仅给 K 范围，Gold 按 required facts 的 OR/AND 证据组判定。',
+  final_grounding: '最终证据池 Recall@K（Gold-covered corpus）：分母只包含可映射的 Gold facts，不代表全部线上语料；只使用 turn_observation 中的真实 chunk ID（v2 的 final_grounding[].chunk_id 或兼容字段 final_grounding_chunks），K 逐题取最终 chunk 数，汇总仅给 K 范围；Gold 按 required facts 的 OR/AND 证据组判定。',
   ragflow_candidates_at_12: 'RAGFlow 原始候选 Recall@12 / Hit@12：取 merge 之前的专业库 Top-12 chunk ID（v2 的 ragflow_candidates_at_12[].chunk_id 或兼容字段 ragflow_candidate_chunk_ids_at_12），与最终证据池口径不同。',
   ai_qa: '真实调用 POST /api/v1/qa/turns（deliver=auto），包含 Decision 路由、Query 改写门禁与最终回答装配；单轮题通常 rewrite.called=false、fallback_reason=gate_skip。',
-  observation: '分数只来自后端 qa: turn_observation 日志；无观测或旧版仅有 document/evidence ID、缺少 chunk 级字段的题会标记为 legacy_schema_unscorable，不进入 Recall/Hit 分母，不使用接口 citations 或答案文本反推。',
+  observation: '分数只来自后端 qa: turn_observation 日志；not_retrieved 表示 Decision 早退未检索，empty_candidate_observed 是观测到的有效空结果，unavailable 是缺观测/旧 schema/无法解析，均不会伪装成检索 miss。缺少 chunk 级字段的题不进入 Recall/Hit 分母，不使用接口 citations 或答案文本反推。',
+  decision: '严格误拒与广义非作答拒止的分母相同（预期作答且可评分的 case），但动作集合不同：严格口径只统计 refuse_domain、compliance_block、insufficient_evidence，广义口径还包含 escalate_human、clarify、other。误答的分母是预期非作答且可评分的 case，不能与误拒率合并。',
 };
 
 async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => {} } = {}) {
   const { mode, config } = request;
   const outputById = new Map(dataset.expected_outputs.map((row) => [row.case_id, row]));
-  const allCases = dataset.cases.filter((row) => {
-    const output = outputById.get(row.case_id);
-    return output?.expected_behavior === 'answer' && (output.required_fact_ids || []).length > 0;
+  const actionMap = loadExpectedActionMap(request.datasetVersion || process.env.DATASET_VERSION || 'v1.5');
+  const cases = [...dataset.cases];
+  const datasetDigest = stableDigest({
+    cases: dataset.cases,
+    facts: dataset.facts,
+    evidences: dataset.evidences,
+    fact_evidence_relations: dataset.fact_evidence_relations,
+    expected_outputs: dataset.expected_outputs,
   });
-  const cases = config.maxCases > 0 ? allCases.slice(0, config.maxCases) : allCases;
+  const actionMapDigest = stableDigest(actionMap);
+  const runMeta = safeRunMetadata(config);
   const groupsByFact = goldGroupsByFact(dataset);
   const startedAt = new Date().toISOString();
   const logSince = new Date(Date.now() - 60_000).toISOString();
@@ -1163,8 +1304,13 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
   };
   let sessionUserId = '';
   const records = [];
+  const progressCounts = {
+    api: { done: 0, total: cases.length },
+    decision: { done: 0, total: cases.length },
+    observation: { done: 0, total: cases.filter((item) => outputById.get(item.case_id)?.expected_behavior === 'answer').length },
+  };
   let consecutiveFailures = 0;
-  onProgress({ completed: 0, total: cases.length, case_id: '' });
+  onProgress({ completed: 0, total: cases.length, case_id: '', counts: structuredClone(progressCounts) });
 
   try {
     const prepared = await qaPrepareIsolatedSessions(config, auth, signal);
@@ -1183,15 +1329,25 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
     abortCheck(signal);
     const item = cases[index];
     const output = outputById.get(item.case_id);
+    const action = actionMap.cases?.[item.case_id] || {};
     const clientTurnId = `eval-${randomUUID()}`;
     const row = {
       case_id: item.case_id,
       question: item.question,
+      expected_behavior: output?.expected_behavior || null,
+      expected_action: action.expected_action ?? null,
+      scoreable: Boolean(action.scoreable),
+      recall_cohort: output?.expected_behavior === 'answer' && (output.required_fact_ids || []).length > 0,
       required_fact_ids: output.required_fact_ids || [],
       client_turn_id: clientTurnId,
       qa: null,
       session_closed: false,
       observation: null,
+      decision: null,
+      decision_trace: null,
+      retrieval_state: 'unavailable',
+      retrieval_state_reason: 'observation_not_loaded',
+      retrieval_observation: null,
       final: null,
       raw_ragflow: null,
       error: null,
@@ -1249,7 +1405,8 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
       error: Boolean(row.error),
       cleanup_closed: row.session_cleanup?.closed || [],
     });
-    onProgress({ completed: index + 1, total: cases.length, case_id: item.case_id });
+    progressCounts.api.done += 1;
+    onProgress({ completed: index + 1, total: cases.length, case_id: item.case_id, counts: structuredClone(progressCounts) });
   }
 
   const warnings = [];
@@ -1267,23 +1424,76 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
   } else try {
     const logs = await readQaObservations(config, logSince);
     container = logs.container;
+    progressCounts.decision.total = records.length;
+    progressCounts.observation.total = records.filter((row) => row.recall_cohort).length;
     for (const row of records) {
       const decision = logs.decisionsBySession.get(row.qa?.session_id);
       if (decision) row.decision = projectQaDecision(decision);
+      const decisionTrace = logs.decisionTracesBySession.get(row.qa?.session_id);
+      row.decision_trace = projectQaDecisionTrace(decisionTrace, decision);
+      if (row.decision?.action) progressCounts.decision.done += 1;
       const observation = logs.byClientTurn.get(row.client_turn_id)
         || logs.byQuestion.get(row.qa?.question_message_id)
         || logs.bySession.get(row.qa?.session_id);
-      if (!observation) continue;
+      if (!observation) {
+        if (row.recall_cohort) progressCounts.observation.done += 1;
+        if (!row.error && row.decision?.action && row.decision.action !== 'answer') {
+          row.retrieval_state = 'not_retrieved';
+          row.retrieval_state_reason = 'decision_early_exit_without_turn_observation';
+        } else if (row.error) {
+          row.retrieval_state = 'unavailable';
+          row.retrieval_state_reason = 'api_call_failed';
+        } else {
+          row.retrieval_state = 'unavailable';
+          row.retrieval_state_reason = 'missing_turn_observation';
+        }
+        continue;
+      }
       row.observation = projectQaObservation(observation);
-      if (!row.observation.chunk_metrics_available) continue;
+      if (row.recall_cohort) progressCounts.observation.done += 1;
+      const reportedRetrieval = OBSERVATION_RETRIEVAL_STATES.has(observation.retrieval?.state)
+        ? observation.retrieval.state
+        : null;
+      row.retrieval_observation = {
+        attempted: observation.retrieval?.attempted ?? null,
+        state: reportedRetrieval,
+        reason: safeText(observation.retrieval?.reason, 160) || null,
+      };
+      if (reportedRetrieval === 'not_attempted') {
+        row.retrieval_state = 'not_retrieved';
+        row.retrieval_state_reason = 'retrieval_not_attempted';
+        continue;
+      }
+      if (reportedRetrieval === 'unavailable') {
+        row.retrieval_state = 'unavailable';
+        row.retrieval_state_reason = row.retrieval_observation.reason || 'retrieval_unavailable';
+        continue;
+      }
+      if (!row.observation.chunk_metrics_available) {
+        row.retrieval_state = 'unavailable';
+        row.retrieval_state_reason = row.observation.legacy_schema_unscorable
+          ? 'legacy_observation_without_chunk_ids'
+          : 'missing_chunk_observations';
+        continue;
+      }
       const finalIds = row.observation.final_grounding_chunks;
+      const rawIds = row.observation.ragflow_candidate_chunk_ids_at_12;
+      const chunkIdsAvailable = finalIds.length > 0 || rawIds.length > 0;
+      if (reportedRetrieval === 'effective_empty' || (reportedRetrieval !== 'success' && !chunkIdsAvailable)) {
+        row.retrieval_state = 'empty_candidate_observed';
+        row.retrieval_state_reason = reportedRetrieval === 'effective_empty'
+          ? (row.retrieval_observation.reason || 'effective_empty_observed')
+          : 'empty_chunk_arrays_observed';
+      } else {
+        row.retrieval_state = 'scored';
+        row.retrieval_state_reason = 'chunk_observations_available';
+      }
       const finalK = finalIds.length;
       row.final = {
         ids: finalIds,
         path_latency_ms: row.qa?.latency_ms ?? null,
         gold: assessGold(row.required_fact_ids, finalIds, groupsByFact, finalK),
       };
-      const rawIds = row.observation.ragflow_candidate_chunk_ids_at_12;
       row.raw_ragflow = {
         ids: rawIds,
         path_latency_ms: null,
@@ -1315,7 +1525,42 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
     warnings.push('本轮所有可评分题均未命中 Gold；请先核对 Gold chunk 映射是否针对当前 qwen 数据库。');
   }
 
-  return {
+  const decisionRows = records.map((row) => ({
+    ...row,
+    observed_action: row.decision?.action || null,
+  }));
+  const decisionMetrics = scoreDecisionMetrics(decisionRows);
+  const recallMetrics = scoreRecallMetrics(records);
+  const attribution = aggregateDecisionAttribution(records);
+  const observedDecisions = records.filter((row) => row.decision?.action).length;
+  const expectedDecisions = records.filter((row) => row.scoreable).length;
+  const observedTraces = records.filter((row) => row.decision_trace?.status === 'observed').length;
+  const metadataStatus = runMeta.metadata_status === 'unavailable' && observedTraces < cases.length
+    ? 'unavailable'
+    : runMeta.metadata_status === 'unavailable' && observedTraces === cases.length
+      ? 'from_traces'
+      : runMeta.metadata_status;
+  const completionFailures = [];
+  if (records.length !== cases.length) completionFailures.push('cases');
+  if (observedDecisions !== cases.length) completionFailures.push('decisions');
+  if (metadataStatus === 'unavailable') completionFailures.push('run metadata');
+  const status = completionFailures.length === 0 ? 'complete' : 'partial';
+  if (status !== 'complete') {
+    warnings.push(`报告状态为 ${status}：${completionFailures.join(', ')} 不完整，不可作为完整运行基线。`);
+  }
+  if (observedTraces < cases.length) {
+    warnings.push(`${cases.length - observedTraces} 题缺少 Decision trace，无法逐题确认模型/source/mode 归因。`);
+  }
+  if (expectedDecisions !== 158) {
+    warnings.push(`可评分 Decision 题为 ${expectedDecisions}，预期为 158；请检查 expected-action 映射。`);
+  }
+  const report = {
+    report_schema_version: REPORT_SCHEMA_VERSION,
+    report_digest: '',
+    metric_schema_version: METRIC_SCHEMA_VERSION,
+    evaluator_version: EVALUATOR_VERSION,
+    status,
+    completion_failures: completionFailures,
     run_id: randomUUID(),
     dataset_version: process.env.DATASET_VERSION || 'v1.5',
     target: 'ai-qa',
@@ -1327,15 +1572,50 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
     started_at: startedAt,
     finished_at: new Date().toISOString(),
     duration_ms: Number((performance.now() - wallStart).toFixed(1)),
+    dataset: {
+      digest: datasetDigest,
+      label_status: actionMap.label_status,
+      provisional: actionMap.provisional,
+      action_map: {
+        schema_version: actionMap.schema_version,
+        digest: actionMapDigest,
+        provisional: actionMap.provisional,
+        label_status: actionMap.label_status,
+      },
+    },
+    evaluation: {
+      top_k: TOP_K,
+      cohorts: { decision: cases.length, recall: records.filter((row) => row.recall_cohort).length },
+      decision: { scoreable: decisionRows.filter((row) => row.scoreable).length },
+    },
+    run: {
+      ...runMeta,
+      metadata_status: metadataStatus,
+      decision: {
+        ...runMeta.decision,
+        ...attribution,
+      },
+    },
     cases_total: cases.length,
     summary: {
       session_isolation: sessionIsolation,
+      decision: decisionMetrics,
       ...metrics,
+      ...recallMetrics,
     },
     warnings,
     metric_notes: AI_QA_METRIC_NOTES,
     rows: records,
   };
+  report.report_digest = stableDigest({
+    ...report,
+    report_digest: null,
+  });
+  const secretFindings = scanReportSecrets(report);
+  if (secretFindings.length) {
+    throw new Error(`报告脱敏检查失败：${secretFindings.slice(0, 5).join('; ')}`);
+  }
+  return report;
 }
 
 export async function runEvaluation(dataset, request, { signal, onProgress = () => {} } = {}) {

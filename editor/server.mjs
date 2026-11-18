@@ -252,6 +252,16 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, html, 'text/html; charset=utf-8');
     }
 
+    if (req.method === 'GET' && url.pathname === '/report-history.js') {
+      const script = fs.readFileSync(path.join(REPO_ROOT, 'editor', 'report-history.js'));
+      return send(res, 200, script, 'text/javascript; charset=utf-8');
+    }
+
+    if (req.method === 'GET' && url.pathname === '/metrics.mjs') {
+      const script = fs.readFileSync(path.join(REPO_ROOT, 'editor', 'metrics.mjs'));
+      return send(res, 200, script, 'text/javascript; charset=utf-8');
+    }
+
     return send(res, 404, { error: 'not found' });
   } catch (error) {
     console.error(error);
