@@ -137,6 +137,7 @@ Fact 的审核状态可在 Fact 库编辑，也可在“管理 Query 的 Facts�
 | POST | `/api/golden/links/fact-evidence` | 覆盖 Fact 的 Evidence 集合与运算符 |
 | POST | `/api/golden/links/evidence-chunks` | 覆盖 Evidence 的 Chunk 集合 |
 | POST | `/api/golden/evidence` | 创建 Evidence、Chunk 快照和两层关联，校验后写入变更文件 |
+| POST | `/api/golden/evidence/polish` | 用 LLM 润色 Evidence 草稿的标题和摘录，不写数据 |
 | POST | `/api/golden/queries/draft` | LLM 从 Fact 生成 Query 候选 |
 | POST | `/api/golden/queries/bulk` | 批量创建主问、变体及其 Fact 关联 |
 | POST | `/api/golden/ragflow/search` | RAGFlow `/api/v1/retrieval` |

@@ -670,6 +670,32 @@ export function parseSuggestions(raw, existingTexts = []) {
   });
 }
 
+export function parseEvidenceDraftPolish(raw, fallback = {}) {
+  const source = String(raw ?? '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const start = source.indexOf('{');
+  const end = source.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new GoldenError('LLM 没有返回 JSON 对象', 502);
+
+  let payload;
+  try {
+    payload = JSON.parse(source.slice(start, end + 1));
+  } catch {
+    throw new GoldenError('LLM 返回的 JSON 无法解析', 502);
+  }
+
+  [REDACTED]};
+  const title = text(payload?.title);
+  const excerpt = text(payload?.excerpt);
+  if (title) result.title = title.slice(0, 160);
+  if (excerpt) result.excerpt = excerpt;
+  if (!result.title && !result.excerpt) throw new GoldenError('LLM 没有返回可用的标题或摘录', 502);
+  return {
+    ...(text(fallback.title) && !result.title ? { title: text(fallback.title) } : {}),
+    ...(text(fallback.excerpt) && !result.excerpt ? { excerpt: text(fallback.excerpt) } : {}),
+    ...result,
+  };
+}
+
 export function coverageGaps(state) {
   const factIds = new Set(state.facts.map((row) => row.fact_id));
   const requiredFacts = new Set();
