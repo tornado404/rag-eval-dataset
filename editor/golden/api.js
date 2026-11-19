@@ -90,6 +90,10 @@ export function createEvidence(body) {
   return post('/api/golden/evidence', body);
 }
 
+export function polishEvidenceDraft(body) {
+  return post('/api/golden/evidence/polish', body);
+}
+
 export function draftQueries(body) {
   return post('/api/golden/queries/draft', body);
 }

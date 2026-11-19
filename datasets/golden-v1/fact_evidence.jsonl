@@ -116,7 +116,7 @@
 {"fact_id":"F116","evidence_ids":["E00175","E00122"],"operator":"OR"}
 {"fact_id":"F117","evidence_ids":["E00175"],"operator":"OR"}
 {"fact_id":"F118","evidence_ids":["E00175"],"operator":"OR"}
-{"fact_id":"F119","evidence_ids":["E00175"],"operator":"OR"}
+{"fact_id":"F119","evidence_ids":["E00175","E484"],"operator":"OR"}
 {"fact_id":"F120","evidence_ids":["E00176"],"operator":"OR"}
 {"fact_id":"F121","evidence_ids":["E00176"],"operator":"OR"}
 {"fact_id":"F122","evidence_ids":["E00216"],"operator":"OR"}
@@ -189,7 +189,7 @@
 {"fact_id":"F189","evidence_ids":["E00232","E00231"],"operator":"AND"}
 {"fact_id":"F190","evidence_ids":["E00232","E00231"],"operator":"AND"}
 {"fact_id":"F191","evidence_ids":["E00232","E00231"],"operator":"AND"}
-{"fact_id":"F192","evidence_ids":["E00005"],"operator":"OR"}
+{"fact_id":"F192","evidence_ids":["E00005","E485"],"operator":"OR"}
 {"fact_id":"F193","evidence_ids":["E00005"],"operator":"OR"}
 {"fact_id":"F194","evidence_ids":["E00005"],"operator":"OR"}
 {"fact_id":"F195","evidence_ids":["E00005"],"operator":"OR"}

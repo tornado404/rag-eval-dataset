@@ -21,6 +21,7 @@ import {
   evidenceInventory,
   mutate,
   parseSuggestions,
+  parseEvidenceDraftPolish,
   readState,
   TOPICS,
   upsertEntity,
@@ -349,6 +350,53 @@ async function suggestQueries(config, { facts, seedText, count, existingTexts })
   return parseSuggestions(content, existingTexts);
 }
 
+function evidencePolishPrompt({ fact, title, excerpt, chunks }) {
+  const sourceLines = chunks.map((chunk, index) => [
+    `[${index + 1}] ${chunk.chunk_id}`,
+    chunk.document_name || chunk.document_id || '未命名文档',
+    String(chunk.content || '').slice(0, 4000),
+  ].join('\n')).join('\n\n');
+  return [
+    '你是 RAG 评测数据集的 Evidence 标注助手。润色人工填写的标题和摘录，让它们准确支撑目标 Fact。',
+    '要求：',
+    '1. 只能使用来源原文中的事实，不得新增数值、结论、适应症、禁忌或来源没有的信息。',
+    '2. 保留所有数字、单位、对象、条件、时间、否定和限定语义；不确定时保持原文。',
+    '3. 摘录优先整理人工已填文本，可修正语病、去除重复和无关句；来源原文用于核对。',
+    '4. 标题概括一条可核验事实，不超过 60 个中文字。',
+    '5. 只输出 JSON 对象，格式：{"title":"...","excerpt":"..."}。',
+    '',
+    `目标 Fact：${fact.fact_id} ${fact.statement}`,
+    `人工标题：${title || '（空）'}`,
+    `人工摘录：${excerpt || '（空）'}`,
+    '',
+    '来源 Chunk：',
+    sourceLines || '（无）',
+  ].join('\n');
+}
+
+async function polishEvidenceDraft(config, input) {
+  if (!config.llmBaseUrl || !config.llmModel) {
+    throw new GoldenError('LLM 未配置，请在 golden.env 填写 LLM_BASE_URL / LLM_MODEL', 503);
+  }
+  const payload = await requestJson(chatUrl(config.llmBaseUrl), {
+    method: 'POST',
+    headers: config.llmApiKey ? { Authorization: `Bearer ${config.llmApiKey}` } : {},
+    body: {
+      model: config.llmModel,
+      temperature: 0.2,
+      max_tokens: 1600,
+      messages: [
+        { role: 'system', content: '你是严谨的 RAG 评测数据标注助手，只输出 JSON。' },
+        { role: 'user', content: evidencePolishPrompt(input) },
+      ],
+    },
+    label: 'LLM',
+  });
+  const content = payload?.choices?.[0]?.message?.content;
+  if (!content) throw new GoldenError('LLM 未返回内容', 502);
+  return parseEvidenceDraftPolish(content, { title: input.title, excerpt: input.excerpt });
+}
+
 function stateBundle() {
   const state = readState(VERSION);
   const config = loadConfig();
@@ -453,6 +501,29 @@ async function handle(req, res, url) {
       existingTexts: state.queries.map((query) => query.text),
     });
     return send(res, 200, { candidates, model: config.llmModel, facts: facts.map((fact) => fact.fact_id) });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/golden/evidence/polish') {
+    const body = await safeBody(req);
+    const state = readState(VERSION);
+    const factId = stringOf(body.fact_id);
+    const fact = state.facts.find((row) => row.fact_id === factId);
+    if (!fact) throw new GoldenError('目标 Fact 不存在', 400);
+    const title = stringOf(body.title);
+    const excerpt = stringOf(body.excerpt);
+    if (!title && !excerpt) throw new GoldenError('请先填写标题或摘录，再让 LLM 润色', 400);
+    const chunks = (Array.isArray(body.chunks) ? body.chunks : [])
+      .map((chunk) => ({
+        chunk_id: stringOf(chunk?.chunk_id),
+        document_name: stringOf(chunk?.document_name),
+        document_id: stringOf(chunk?.document_id),
+        content: stringOf(chunk?.content),
+      }))
+      .filter((chunk) => chunk.chunk_id && chunk.content)
+      .slice(0, 8);
+    const config = loadConfig();
+    const draft = await polishEvidenceDraft(config, { fact, title, excerpt, chunks });
+    return send(res, 200, { ...draft, model: config.llmModel });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/golden/queries/bulk') {

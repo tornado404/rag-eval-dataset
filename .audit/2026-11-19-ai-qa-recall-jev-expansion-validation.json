@@ -1,0 +1,75 @@
+{
+  "report_path": "/Users/mac/work/rag-eval-dataset-m3-deploy/reports/v1.5-ai-qa-recall-jev-expansion-partial.json",
+  "run_id": "9be8c623-9508-492d-b21f-4a23f32c1963",
+  "started_at": "2026-11-19T00:18:02.244Z",
+  "finished_at": "2026-11-19T00:48:11.695Z",
+  "duration_ms": 1809485,
+  "status": "partial",
+  "completion_failures": [
+    "decisions",
+    "run metadata"
+  ],
+  "cases_total": 163,
+  "recall_cohort": 149,
+  "case_errors": 5,
+  "decision_source_counts": {
+    "jev": 155,
+    "unavailable": 3
+  },
+  "decision_model_counts": {
+    "jev": 155,
+    "unavailable": 3
+  },
+  "decision_fingerprint_counts": {
+    "preference=auto/model=/threshold=0.700000/domain=0.600000/uncertain=0.400000/expansion=true": 158
+  },
+  "observed_traces": 158,
+  "expansion_fingerprints": 158,
+  "expanded_observations": 124,
+  "session_isolation": {
+    "cases_with_session": 158,
+    "cases_closed": 158,
+    "unique_sessions": 158,
+    "duplicate_sessions": 0,
+    "close_failures": 0
+  },
+  "observation_coverage": {
+    "cases": 148,
+    "denominator": 149,
+    "rate": 0.9932885906040269
+  },
+  "chunk_observation_coverage": {
+    "cases": 148,
+    "denominator": 149,
+    "rate": 0.9932885906040269
+  },
+  "retrieval_states": {
+    "not_retrieved": 8,
+    "empty_candidate_observed": 0,
+    "unavailable": 1,
+    "scored": 140
+  },
+  "warnings": [
+    "1 题未在 docker logs 中找到 turn_observation；其中 0 题由 Decision 提前返回，不是接口调用失败。这些题不参与 Recall/Hit 统计，不能用接口 citations 替代。",
+    "报告状态为 partial：decisions, run metadata 不完整，不可作为完整运行基线。",
+    "5 题缺少 Decision trace，无法逐题确认模型/source/mode 归因。"
+  ],
+  "checks": {
+    "status_complete": false,
+    "completion_failures_zero": false,
+    "case_errors_zero": false,
+    "cases_total_163": true,
+    "recall_cohort_149": true,
+    "jev_only": false,
+    "expansion_fingerprint_all": true,
+    "expansion_queries_observed": false,
+    "sessions_unique": false,
+    "sessions_closed": false,
+    "sessions_no_duplicates": true,
+    "sessions_no_close_failures": true,
+    "observation_coverage_full": false,
+    "chunk_observation_coverage_full": false,
+    "no_legacy_only_scoring": false
+  },
+  "all_checks_passed": false
+}
