@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Golden Dataset · 证据审核台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" data-action="navigate" data-screen="workbench" aria-label="Golden Dataset 首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M7 9.2c0-1.7 4-3.2 9-3.2s9 1.5 9 3.2-4 3.2-9 3.2-9-1.5-9-3.2Z" fill="currentColor" opacity=".95"/>
+            <path d="M7 9.2v6.2c0 1.7 4 3.2 9 3.2s9-1.5 9-3.2V9.2" stroke="currentColor" stroke-width="2"/>
+            <path d="M7 15.4v6.2c0 1.7 4 3.2 9 3.2s9-1.5 9-3.2v-6.2" stroke="currentColor" stroke-width="2" opacity=".7"/>
+          </svg>
+        </span>
+        <span class="brand-copy">
+          <strong>Golden Dataset</strong>
+          <small>证据审核台</small>
+        </span>
+      </a>
+
+      <nav class="topnav" aria-label="主导航">
+        <button class="nav-btn" data-action="navigate" data-screen="workbench">审核工作台</button>
+        <button class="nav-btn" data-action="navigate" data-screen="builder">构造 Query</button>
+        <button class="nav-btn" data-action="navigate" data-screen="queries">Query 清单</button>
+        <button class="nav-btn" data-action="navigate" data-screen="facts">Fact 库</button>
+        <button class="nav-btn" data-action="navigate" data-screen="evidence">证据库</button>
+        <button class="nav-btn" data-action="navigate" data-screen="overview">数据概览</button>
+      </nav>
+
+      <div class="top-actions">
+        <button class="status-pill" id="connection-pill" data-action="show-config" type="button" aria-label="上游服务配置">
+          <span class="status-dot"></span>
+          <span>连接检查中</span>
+        </button>
+        <button class="icon-btn" data-action="show-help" type="button" aria-label="使用说明" title="使用说明">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M9.8 9.2a2.4 2.4 0 0 1 4.7.7c0 1.7-2.5 2-2.5 3.7"/>
+            <path d="M12 17.2h.01"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="view" id="view">
+      <div class="boot-screen">
+        <span class="spinner"></span>
+        <span>正在读取数据集…</span>
+      </div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div class="toast-stack" id="toast-root" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
