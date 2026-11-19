@@ -78,6 +78,7 @@ const ui = {
   querySearch: '',
   queryStatus: '',
   factSearch: '',
+  overviewSearch: '',
   factDraft: null,
   builder: emptyBuilder(),
   evidenceWorkspace: emptyEvidenceWorkspace(),
@@ -97,6 +98,7 @@ function emptyBuilder(overrides = {}) {
     seedText: '',
     expectedBehavior: 'answer',
     factSearch: '',
+    candidateSearch: '',
     factLinks: [],
     candidates: [],
     model: '',
@@ -119,6 +121,7 @@ function emptyEvidenceWorkspace(overrides = {}) {
     mode: 'keyword',
     keyword: '',
     keywordInput: '',
+    candidateSearch: '',
     candidates: [],
     candidatesByMode: { keyword: [], query: [] },
     selectedChunkIds: new Set(),
@@ -497,6 +500,13 @@ function builderFactVisible(row, link) {
   return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${factTypeLabel(row.fact_type)} ${STATUS_LABELS[row.status] || row.status || ''} ${row.importance || 'P1'}`).includes(term);
 }
 
+function builderCandidateVisible(candidate) {
+  const term = normalizeText(ui.builder.candidateSearch);
+  if (!term) return true;
+  const haystack = normalizeText(`${candidate.text || ''} ${candidate.rationale || ''} ${VARIANT_LABELS[candidate.variant_type] || ''} ${candidate.id || ''}`);
+  return haystack.includes(term);
+}
+
 function listSearchBox({ id, bind, value, placeholder, clearAction }) {
   const modalClass = bind === 'query-facts-search' ? ' query-facts-search' : '';
   return `<label class="search-box list-search-box${modalClass}">
@@ -719,6 +729,13 @@ function similarityText(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return '—';
   return `${(number <= 1 ? number * 100 : number).toFixed(0)}%`;
+}
+
+function evidenceCandidateVisible(candidate) {
+  const term = normalizeText(ui.evidenceWorkspace.candidateSearch);
+  if (!term) return true;
+  const haystack = normalizeText(`${candidate.chunk_id || ''} ${candidate.document_name || ''} ${candidate.document_id || ''} ${candidate.content || ''} ${candidate.page || ''} ${candidate.dataset_id || ''} ${candidate.source || ''} ${similarityText(candidate.similarity)} ${(candidate.matched_fact_ids || []).join(' ')} ${(candidate.matched_evidence_ids || []).join(' ')}`);
+  return haystack.includes(term);
 }
 
 function pageLabel(page) {
@@ -1739,6 +1756,7 @@ function renderBuilderCandidate(candidate) {
 
 function renderBuilder() {
   const selectedCount = ui.builder.candidates.filter((candidate) => candidate.selected && text(candidate.text)).length;
+  const candidateRows = ui.builder.candidates.filter(builderCandidateVisible);
   const selectedFacts = ui.builder.factLinks.map((link) => ({ ...link, fact: fact(link.fact_id) })).filter((link) => link.fact);
   const factRows = rows('facts').filter((row) => builderFactVisible(row, builderFactLink(row.fact_id)));
   const builderAssignmentOptions = assignmentOptions(ui.builder.factLinks);
@@ -1848,11 +1866,25 @@ function renderBuilder() {
             <div class="ai-intro">
               候选必须先选 Fact。LLM 只负责改写问法，数字、单位、条件、否定语义以人工 Fact 为准。
             </div>
+            ${ui.builder.generating || !ui.builder.candidates.length ? '' : `
+              ${listSearchBox({
+                id: 'builder-candidate-search',
+                bind: 'builder-candidate-search',
+                value: ui.builder.candidateSearch,
+                placeholder: '搜索候选文本、理由、类型或 ID',
+                clearAction: 'clear-builder-candidate-search',
+              })}`}
             ${ui.builder.generating ? `
               <div class="generation-state"><span class="spinner"></span><span>正在生成主问与变体…</span></div>` : ui.builder.candidates.length ? `
-              <div class="suggestion-list">
-                ${ui.builder.candidates.map(renderBuilderCandidate).join('')}
-              </div>` : emptyState({
+              ${candidateRows.length ? `
+                <div class="suggestion-list">
+                  ${candidateRows.map(renderBuilderCandidate).join('')}
+                </div>` : emptyState({
+                  title: '没有匹配的候选',
+                  copy: '清空搜索词后再试。',
+                  iconName: 'sparkle',
+                  compact: true,
+                })}` : emptyState({
                 title: '还没有候选',
                 copy: ui.builder.factLinks.length
                   ? '点击生成候选，或直接在左侧主问草稿中手写后提交。'
@@ -2221,6 +2253,24 @@ function renderAttentionRow({ title, copy, action, id, screen, tone = '' }) {
     </div>`;
 }
 
+function overviewQueryVisible(row) {
+  const term = normalizeText(ui.overviewSearch);
+  if (!term) return true;
+  return normalizeText(`${row.query_id} ${row.text} ${row.notes || ''} ${row.parent_query_id || ''} ${STATUS_LABELS[row.status] || row.status || ''}`).includes(term);
+}
+
+function overviewFactVisible(row) {
+  const term = normalizeText(ui.overviewSearch);
+  if (!term) return true;
+  return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${factTypeLabel(row.fact_type)} ${STATUS_LABELS[row.status] || row.status || ''} ${row.importance || 'P1'}`).includes(term);
+}
+
+function overviewEvidenceVisible(row) {
+  const term = normalizeText(ui.overviewSearch);
+  if (!term) return true;
+  return normalizeText(`${row.evidence_id} ${row.title} ${row.excerpt || ''}`).includes(term);
+}
+
 function renderOverview() {
   const facts = rows('facts');
   const queries = rows('queries');
@@ -2234,12 +2284,15 @@ function renderOverview() {
   const evidenceWithChunks = evidences.filter((row) => chunkIdsOfEvidence(row.evidence_id).length > 0).length;
   const attentionQueries = queries
     .filter((row) => row.status !== 'approved' || !queryFactLinks(row.query_id).some((link) => isScoringRequirement(link.requirement)))
+    .filter(overviewQueryVisible)
     .slice(0, 6);
   const attentionFacts = facts
     .filter((row) => !evidenceIdsOfFact(row.fact_id).length || !chunkIdsOfFact(row.fact_id).length)
+    .filter(overviewFactVisible)
     .slice(0, 6);
   const attentionEvidence = evidences
     .filter((row) => !chunkIdsOfEvidence(row.evidence_id).length)
+    .filter(overviewEvidenceVisible)
     .slice(0, 6);
 
   return `
@@ -2254,6 +2307,13 @@ function renderOverview() {
           <button class="btn btn-primary" data-action="navigate" data-screen="workbench" type="button">${icon('link')} 去审核证据</button>
         </div>
       </div>
+      ${listSearchBox({
+        id: 'overview-search',
+        bind: 'overview-search',
+        value: ui.overviewSearch,
+        placeholder: '搜索待处理 Query、Fact 和 Evidence',
+        clearAction: 'clear-overview-search',
+      })}
       <div class="kpi-band">
         <div class="kpi">
           <div class="kpi-label">Query</div>
@@ -2392,6 +2452,7 @@ function renderOverview() {
                   });
                 }).join('')}
               </div>` : emptyState({ title: '没有待处理 Query', copy: '所有 Query 都已确认且配置了评分规则。', compact: true })}
+              ${ui.overviewSearch && !attentionQueries.length ? emptyState({ title: '没有匹配的 Query', copy: '清空搜索词后再试。', compact: true }) : ''}
           </section>
           <section class="panel">
             <div class="panel-head">
@@ -2423,6 +2484,8 @@ function renderOverview() {
                   tone: 'risk',
                 })).join('')}
               </div>` : emptyState({ title: '证据链没有明显缺口', copy: 'Fact 的 Evidence 和 Chunk 覆盖已齐全。', compact: true })}
+              ${ui.overviewSearch && !attentionFacts.length ? emptyState({ title: '没有匹配的 Fact', copy: '清空搜索词后再试。', compact: true }) : ''}
+              ${ui.overviewSearch && !attentionEvidence.length ? emptyState({ title: '没有匹配的 Evidence', copy: '清空搜索词后再试。', compact: true }) : ''}
           </section>
         </div>
       </div>
@@ -2588,6 +2651,7 @@ function renderEvidenceKpi(label, value, unit, note) {
 function renderEvidenceCandidatesPanel() {
   const workspace = ui.evidenceWorkspace;
   const loading = workspace.mode === 'keyword' ? workspace.keywordLoading : workspace.loading;
+  const candidateRows = workspace.candidates.filter(evidenceCandidateVisible);
   if (loading) {
     return `<div class="boot-screen">${'<span class="spinner"></span>'}<span>${workspace.mode === 'keyword' ? '正在按关键字查找 Chunk…' : '正在按当前 Query 匹配候选 Chunk…'}</span></div>`;
   }
@@ -2611,12 +2675,25 @@ function renderEvidenceCandidatesPanel() {
   }
   return `
     <div class="result-summary">
-      <span>${workspace.candidates.length} 个候选 Chunk · 已选择 ${workspace.selectedChunkIds.size} 个</span>
+      <span>${candidateRows.length} 个候选 Chunk · 已选择 ${workspace.selectedChunkIds.size} 个</span>
       <span>${esc(workspace.result?.retrieval?.dataset_ids?.join('、') || '默认数据集')}</span>
     </div>
-    <div class="result-list">
-      ${workspace.candidates.map((candidate) => renderEvidenceAutoCandidate(candidate)).join('')}
-    </div>`;
+    ${listSearchBox({
+      id: 'evidence-candidate-search',
+      bind: 'evidence-candidate-search',
+      value: workspace.candidateSearch,
+      placeholder: '搜索 Chunk ID、文档、内容、数据集、命中 ID 或相似度',
+      clearAction: 'clear-evidence-candidate-search',
+    })}
+    ${candidateRows.length ? `
+      <div class="result-list">
+        ${candidateRows.map((candidate) => renderEvidenceAutoCandidate(candidate)).join('')}
+      </div>` : emptyState({
+        title: '没有匹配的候选 Chunk',
+        copy: '清空搜索词后再试。',
+        iconName: 'chunk',
+        compact: true,
+      })}`;
 }
 
 function renderEvidenceAutoCandidate(candidate) {
@@ -3848,6 +3925,18 @@ function updateBoundValue(bind, element) {
     ui.builder.factSearch = value;
     return true;
   }
+  if (bind === 'builder-candidate-search') {
+    ui.builder.candidateSearch = value;
+    return true;
+  }
+  if (bind === 'evidence-candidate-search') {
+    ui.evidenceWorkspace.candidateSearch = value;
+    return true;
+  }
+  if (bind === 'overview-search') {
+    ui.overviewSearch = value;
+    return true;
+  }
   if (ui.modal?.type === 'query-facts' && bind === 'query-facts-search') {
     ui.modal.factFilterText = value;
     syncQueryFactsModal(modalRoot, ui.modal);
@@ -4196,6 +4285,15 @@ async function dispatchClickAction(action, element) {
     modalRoot.querySelector('[data-bind="query-facts-search"]')?.focus();
   } else if (action === 'clear-builder-fact-search') {
     ui.builder.factSearch = '';
+    renderWithFocus();
+  } else if (action === 'clear-builder-candidate-search') {
+    ui.builder.candidateSearch = '';
+    renderWithFocus();
+  } else if (action === 'clear-evidence-candidate-search') {
+    ui.evidenceWorkspace.candidateSearch = '';
+    renderWithFocus();
+  } else if (action === 'clear-overview-search') {
+    ui.overviewSearch = '';
     renderWithFocus();
   } else if (action === 'toggle-modal-fact' && ui.modal?.type === 'query-facts') {
     const factId = element.dataset.id || '';

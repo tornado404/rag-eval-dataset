@@ -1823,6 +1823,12 @@ textarea::placeholder {
   margin-bottom: 8px;
 }
 
+.ai-panel .list-search-box,
+.evidence-candidate-panel .list-search-box,
+.overview-search {
+  margin-bottom: 8px;
+}
+
 .query-facts-filters .tab {
   height: 30px;
   padding: 0 9px;
