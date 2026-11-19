@@ -2277,6 +2277,7 @@ function renderOverview() {
   const evidences = rows('evidences');
   const chunks = rows('chunks');
   const gaps = ui.data?.gaps || {};
+  const overviewSearchActive = Boolean(normalizeText(ui.overviewSearch));
   const approvedQueries = queries.filter((row) => row.status === 'approved').length;
   const factsWithEvidence = facts.filter((row) => evidenceIdsOfFact(row.fact_id).length > 0).length;
   const factsWithChunks = facts.filter((row) => chunkIdsOfFact(row.fact_id).length > 0).length;
@@ -2451,8 +2452,9 @@ function renderOverview() {
                     tone: row.status === 'review' ? 'risk' : 'info',
                   });
                 }).join('')}
-              </div>` : emptyState({ title: '没有待处理 Query', copy: '所有 Query 都已确认且配置了评分规则。', compact: true })}
-              ${ui.overviewSearch && !attentionQueries.length ? emptyState({ title: '没有匹配的 Query', copy: '清空搜索词后再试。', compact: true }) : ''}
+              </div>` : overviewSearchActive
+                ? emptyState({ title: '没有匹配的 Query', copy: '清空搜索词后再试。', compact: true })
+                : emptyState({ title: '没有待处理 Query', copy: '所有 Query 都已确认且配置了评分规则。', compact: true })}
           </section>
           <section class="panel">
             <div class="panel-head">
@@ -2483,9 +2485,11 @@ function renderOverview() {
                   screen: 'workbench',
                   tone: 'risk',
                 })).join('')}
-              </div>` : emptyState({ title: '证据链没有明显缺口', copy: 'Fact 的 Evidence 和 Chunk 覆盖已齐全。', compact: true })}
-              ${ui.overviewSearch && !attentionFacts.length ? emptyState({ title: '没有匹配的 Fact', copy: '清空搜索词后再试。', compact: true }) : ''}
-              ${ui.overviewSearch && !attentionEvidence.length ? emptyState({ title: '没有匹配的 Evidence', copy: '清空搜索词后再试。', compact: true }) : ''}
+              </div>` : overviewSearchActive
+                ? ''
+                : emptyState({ title: '证据链没有明显缺口', copy: 'Fact 的 Evidence 和 Chunk 覆盖已齐全。', compact: true })}
+              ${overviewSearchActive && !attentionFacts.length ? emptyState({ title: '没有匹配的 Fact', copy: '清空搜索词后再试。', compact: true }) : ''}
+              ${overviewSearchActive && !attentionEvidence.length ? emptyState({ title: '没有匹配的 Evidence', copy: '清空搜索词后再试。', compact: true }) : ''}
           </section>
         </div>
       </div>
