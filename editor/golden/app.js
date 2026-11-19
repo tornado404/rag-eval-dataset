@@ -481,16 +481,29 @@ function syncAssignmentSelectors(root, links) {
   if (summary) summary.textContent = queryFactCountSummary(links);
 }
 
+function factOptionVisible(row, link, state) {
+  const selected = Boolean(link);
+  if ((state.factFilter || 'all') === 'selected' && !selected) return false;
+  const term = normalizeText(state.factFilterText);
+  if (!term) return true;
+  const status = state.factStatuses?.[row.fact_id] || row.status;
+  return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${STATUS_LABELS[status] || status || ''} ${row.importance || 'P1'}`).includes(term);
+}
+
 function syncQueryFactsModal(root, state) {
   const links = state.factLinks || [];
   const selectedIds = new Set(links.map((link) => link.fact_id));
   const status = (factId) => state.factStatuses?.[factId];
   let visibleCount = 0;
+  let totalCount = 0;
   root.querySelectorAll('[data-fact-option]').forEach((option) => {
     const factId = option.dataset.factOption;
     const link = links.find((item) => item.fact_id === factId);
+    const row = fact(factId);
+    if (!row) return;
+    totalCount += 1;
     const selected = Boolean(link);
-    const visible = state.factFilter !== 'selected' || selected;
+    const visible = factOptionVisible(row, link, state);
     option.hidden = !visible;
     if (visible) visibleCount += 1;
     option.classList.toggle('selected', selected);
@@ -511,19 +524,32 @@ function syncQueryFactsModal(root, state) {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+  const searchInput = root.querySelector('[data-bind="query-facts-search"]');
+  if (searchInput && document.activeElement !== searchInput && searchInput.value !== (state.factFilterText || '')) {
+    searchInput.value = state.factFilterText || '';
+  }
+  const clearSearch = root.querySelector('[data-action="clear-query-facts-search"]');
+  if (clearSearch) clearSearch.hidden = !state.factFilterText;
   const empty = root.querySelector('[data-query-facts-empty]');
   if (empty) {
     empty.hidden = visibleCount > 0;
     const title = empty.querySelector('.empty-title');
     const copy = empty.querySelector('.empty-copy');
     const selectedView = (state.factFilter || 'all') === 'selected';
-    if (title) title.textContent = selectedView ? '还没有勾选 Fact' : 'Fact 库为空';
-    if (copy) copy.textContent = selectedView
-      ? '切回“全部”勾选需要的 Fact，再回来编辑计分方式和状态。'
-      : '先手工录入至少一条事实，再关联到 Query。';
+    const textFiltered = Boolean(state.factFilterText);
+    if (title) title.textContent = textFiltered
+      ? '没有匹配的 Fact'
+      : selectedView ? '还没有勾选 Fact' : 'Fact 库为空';
+    if (copy) copy.textContent = textFiltered
+      ? '清空搜索词后再试。'
+      : selectedView
+        ? '切回“全部”勾选需要的 Fact，再回来编辑计分方式和状态。'
+        : '先手工录入至少一条事实，再关联到 Query。';
   }
   const selectedCount = root.querySelector('[data-query-facts-selected-count]');
   if (selectedCount) selectedCount.textContent = String(selectedIds.size);
+  const totalCountElement = root.querySelector('[data-query-facts-total-count]');
+  if (totalCountElement) totalCountElement.textContent = String(totalCount);
 }
 
 function syncEvidenceCreateModal(root, state, { skipFields = false } = {}) {
@@ -2611,6 +2637,7 @@ function renderQueryFactsModal(modalState) {
   const factLinks = modalState.factLinks || [];
   const selected = new Map(factLinks.map((link) => [link.fact_id, link]));
   const factFilter = modalState.factFilter === 'selected' ? 'selected' : 'all';
+  const factFilterText = modalState.factFilterText || '';
   const factAssignmentOptions = assignmentOptions(factLinks);
   const factStatuses = modalState.factStatuses || {};
   return modalShell({
@@ -2620,18 +2647,24 @@ function renderQueryFactsModal(modalState) {
       <div class="query-facts-summary" data-query-facts-summary>${esc(queryFactCountSummary(factLinks))}</div>
       <div class="query-facts-filters">
         <button class="tab ${factFilter === 'all' ? 'active' : ''}" data-action="filter-query-facts" data-filter="all" type="button" aria-pressed="${factFilter === 'all'}">
-          ${icon('fact')} 全部 <span class="tab-count">${rows('facts').length}</span>
+          ${icon('fact')} 全部 <span class="tab-count" data-query-facts-total-count>${rows('facts').length}</span>
         </button>
         <button class="tab ${factFilter === 'selected' ? 'active' : ''}" data-action="filter-query-facts" data-filter="selected" type="button" aria-pressed="${factFilter === 'selected'}">
           ${icon('check')} 已勾选 <span class="tab-count" data-query-facts-selected-count>${factLinks.length}</span>
         </button>
+        <label class="search-box query-facts-search">
+          ${icon('search')}
+          <input class="input" id="query-facts-search" data-bind="query-facts-search" value="${attr(factFilterText)}" placeholder="搜索 Fact ID、陈述、主题、状态或重要性" autocomplete="off">
+          <button class="search-clear" data-action="clear-query-facts-search" type="button" aria-label="清空" ${factFilterText ? '' : 'hidden'}>${icon('x')}</button>
+        </label>
       </div>
       <div class="fact-select-list">
         ${rows('facts').map((row) => {
           const link = selected.get(row.fact_id);
           const requirement = link?.requirement;
+          const visible = factOptionVisible(row, link, modalState);
           return `
-            <div class="fact-option ${requirement ? 'selected' : ''}" data-fact-option="${attr(row.fact_id)}" ${factFilter === 'selected' && !requirement ? 'hidden' : ''}>
+            <div class="fact-option ${requirement ? 'selected' : ''}" data-fact-option="${attr(row.fact_id)}" ${visible ? '' : 'hidden'}>
               <button class="check ${requirement ? 'checked' : ''}" data-action="toggle-modal-fact" data-id="${attr(row.fact_id)}" type="button" aria-label="${requirement ? '移除' : '添加'} ${attr(row.fact_id)}">${requirement ? icon('check') : ''}</button>
               <div class="fact-option-main">
                 <div class="fact-option-head">
@@ -2657,10 +2690,10 @@ function renderQueryFactsModal(modalState) {
               </div>
             </div>`;
         }).join('')}
-        <div class="query-facts-empty" data-query-facts-empty ${factFilter === 'selected' && factLinks.length ? 'hidden' : ''}>
+        <div class="query-facts-empty" data-query-facts-empty ${rows('facts').some((row) => factOptionVisible(row, selected.get(row.fact_id), modalState)) ? 'hidden' : ''}>
           ${emptyState({
-            title: factFilter === 'selected' ? '还没有勾选 Fact' : 'Fact 库为空',
-            copy: factFilter === 'selected' ? '切回“全部”勾选需要的 Fact，再回来编辑计分方式和状态。' : '先手工录入至少一条事实，再关联到 Query。',
+            title: factFilterText ? '没有匹配的 Fact' : factFilter === 'selected' ? '还没有勾选 Fact' : 'Fact 库为空',
+            copy: factFilterText ? '清空搜索词后再试。' : factFilter === 'selected' ? '切回“全部”勾选需要的 Fact，再回来编辑计分方式和状态。' : '先手工录入至少一条事实，再关联到 Query。',
           })}
         </div>
       </div>` : emptyState({
@@ -3093,6 +3126,7 @@ function openQueryFacts(queryId) {
     type: 'query-facts',
     queryId,
     factFilter: 'all',
+    factFilterText: '',
     factLinks: queryFactLinks(queryId).map((link) => ({
       fact_id: link.fact_id,
       requirement: link.requirement,
@@ -3780,6 +3814,11 @@ function updateBoundValue(bind, element) {
     ui.factSearch = value;
     return true;
   }
+  if (ui.modal?.type === 'query-facts' && bind === 'query-facts-search') {
+    ui.modal.factFilterText = value;
+    syncQueryFactsModal(modalRoot, ui.modal);
+    return false;
+  }
 
   if (ui.modal?.type === 'evidence-create' && bind === 'evidence-draft-title') {
     ui.modal.draft.title = value;
@@ -3851,7 +3890,10 @@ function handleInput(event) {
 function handleCompositionEnd(event) {
   const element = event.target.closest('[data-bind]');
   if (!element || element.tagName === 'SELECT') return;
-  if (updateBoundValue(element.dataset.bind, element)) renderWithFocus();
+  if (updateBoundValue(element.dataset.bind, element)) {
+    if (ui.modal?.type === 'query-facts' && element.dataset.bind === 'query-facts-search') return;
+    renderWithFocus();
+  }
 }
 
 function handleChange(event) {
@@ -4114,6 +4156,10 @@ async function dispatchClickAction(action, element) {
   } else if (action === 'filter-query-facts' && ui.modal?.type === 'query-facts') {
     ui.modal.factFilter = element.dataset.filter === 'selected' ? 'selected' : 'all';
     syncQueryFactsModal(modalRoot, ui.modal);
+  } else if (action === 'clear-query-facts-search' && ui.modal?.type === 'query-facts') {
+    ui.modal.factFilterText = '';
+    syncQueryFactsModal(modalRoot, ui.modal);
+    modalRoot.querySelector('[data-bind="query-facts-search"]')?.focus();
   } else if (action === 'toggle-modal-fact' && ui.modal?.type === 'query-facts') {
     const factId = element.dataset.id || '';
     if (ui.modal.factLinks.some((link) => link.fact_id === factId)) {
