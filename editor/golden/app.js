@@ -96,6 +96,7 @@ function emptyBuilder(overrides = {}) {
   return {
     seedText: '',
     expectedBehavior: 'answer',
+    factSearch: '',
     factLinks: [],
     candidates: [],
     model: '',
@@ -488,6 +489,21 @@ function factOptionVisible(row, link, state) {
   if (!term) return true;
   const status = state.factStatuses?.[row.fact_id] || row.status;
   return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${STATUS_LABELS[status] || status || ''} ${row.importance || 'P1'}`).includes(term);
+}
+
+function builderFactVisible(row, link) {
+  const term = normalizeText(ui.builder.factSearch);
+  if (!term) return true;
+  return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${factTypeLabel(row.fact_type)} ${STATUS_LABELS[row.status] || row.status || ''} ${row.importance || 'P1'}`).includes(term);
+}
+
+function listSearchBox({ id, bind, value, placeholder, clearAction }) {
+  const modalClass = bind === 'query-facts-search' ? ' query-facts-search' : '';
+  return `<label class="search-box list-search-box${modalClass}">
+    ${icon('search')}
+    <input class="input" id="${attr(id)}" data-bind="${attr(bind)}" value="${attr(value)}" placeholder="${attr(placeholder)}" autocomplete="off">
+    <button class="search-clear" data-action="${attr(clearAction)}" type="button" aria-label="清空" ${value ? '' : 'hidden'}>${icon('x')}</button>
+  </label>`;
 }
 
 function syncQueryFactsModal(root, state) {
@@ -1724,6 +1740,7 @@ function renderBuilderCandidate(candidate) {
 function renderBuilder() {
   const selectedCount = ui.builder.candidates.filter((candidate) => candidate.selected && text(candidate.text)).length;
   const selectedFacts = ui.builder.factLinks.map((link) => ({ ...link, fact: fact(link.fact_id) })).filter((link) => link.fact);
+  const factRows = rows('facts').filter((row) => builderFactVisible(row, builderFactLink(row.fact_id)));
   const builderAssignmentOptions = assignmentOptions(ui.builder.factLinks);
   const selectedText = selectedCount ? `${selectedCount} 条已选择` : '尚未选择候选';
   return `
@@ -1780,8 +1797,15 @@ function renderBuilder() {
           </div>
           <div class="panel-body">
             ${rows('facts').length ? `
+              ${listSearchBox({
+                id: 'builder-fact-search',
+                bind: 'builder-fact-search',
+                value: ui.builder.factSearch,
+                placeholder: '搜索 Fact ID、陈述、主题、状态、类型或重要性',
+                clearAction: 'clear-builder-fact-search',
+              })}
               <div class="fact-select-list">
-                ${rows('facts').map((row) => {
+                ${factRows.map((row) => {
                   const link = builderFactLink(row.fact_id);
                   return `
                     <div class="fact-option ${link ? 'selected' : ''}">
@@ -1801,7 +1825,11 @@ function renderBuilder() {
                       </div>
                     </div>`;
                 }).join('')}
-              </div>` : emptyState({
+              </div>
+              ${factRows.length ? '' : emptyState({
+                title: '没有匹配的 Fact',
+                copy: '清空搜索词后再试。',
+              })}` : emptyState({
                 title: '还没有 Fact',
                 copy: 'Fact 只能手工编造。先录入一条事实，再回来构造 Query。',
                 actions: `<button class="btn btn-primary" data-action="navigate" data-screen="facts" type="button">${icon('fact')} 去录入 Fact</button>`,
@@ -2652,11 +2680,13 @@ function renderQueryFactsModal(modalState) {
         <button class="tab ${factFilter === 'selected' ? 'active' : ''}" data-action="filter-query-facts" data-filter="selected" type="button" aria-pressed="${factFilter === 'selected'}">
           ${icon('check')} 已勾选 <span class="tab-count" data-query-facts-selected-count>${factLinks.length}</span>
         </button>
-        <label class="search-box query-facts-search">
-          ${icon('search')}
-          <input class="input" id="query-facts-search" data-bind="query-facts-search" value="${attr(factFilterText)}" placeholder="搜索 Fact ID、陈述、主题、状态或重要性" autocomplete="off">
-          <button class="search-clear" data-action="clear-query-facts-search" type="button" aria-label="清空" ${factFilterText ? '' : 'hidden'}>${icon('x')}</button>
-        </label>
+        ${listSearchBox({
+          id: 'query-facts-search',
+          bind: 'query-facts-search',
+          value: factFilterText,
+          placeholder: '搜索 Fact ID、陈述、主题、状态或重要性',
+          clearAction: 'clear-query-facts-search',
+        })}
       </div>
       <div class="fact-select-list">
         ${rows('facts').map((row) => {
@@ -3814,6 +3844,10 @@ function updateBoundValue(bind, element) {
     ui.factSearch = value;
     return true;
   }
+  if (bind === 'builder-fact-search') {
+    ui.builder.factSearch = value;
+    return true;
+  }
   if (ui.modal?.type === 'query-facts' && bind === 'query-facts-search') {
     ui.modal.factFilterText = value;
     syncQueryFactsModal(modalRoot, ui.modal);
@@ -4160,6 +4194,9 @@ async function dispatchClickAction(action, element) {
     ui.modal.factFilterText = '';
     syncQueryFactsModal(modalRoot, ui.modal);
     modalRoot.querySelector('[data-bind="query-facts-search"]')?.focus();
+  } else if (action === 'clear-builder-fact-search') {
+    ui.builder.factSearch = '';
+    renderWithFocus();
   } else if (action === 'toggle-modal-fact' && ui.modal?.type === 'query-facts') {
     const factId = element.dataset.id || '';
     if (ui.modal.factLinks.some((link) => link.fact_id === factId)) {

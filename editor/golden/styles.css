@@ -1810,13 +1810,17 @@ textarea::placeholder {
   margin-bottom: 8px;
 }
 
-.query-facts-filters .query-facts-search {
+.query-facts-filters .list-search-box {
   max-width: 340px;
   margin-left: auto;
 }
 
-.query-facts-filters .query-facts-search .input {
+.query-facts-filters .list-search-box .input {
   height: 30px;
+}
+
+.builder-panel .list-search-box {
+  margin-bottom: 8px;
 }
 
 .query-facts-filters .tab {
@@ -1826,7 +1830,7 @@ textarea::placeholder {
 }
 
 .fact-option[hidden],
-.query-facts-search .search-clear[hidden],
+.list-search-box .search-clear[hidden],
 .query-facts-empty[hidden] {
   display: none;
 }
