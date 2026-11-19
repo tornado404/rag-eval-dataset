@@ -109,6 +109,16 @@ npm run editor
 
 本机启动默认绑定 `127.0.0.1`。M3 部署通过 `BIND_ADDRESS=0.0.0.0` 绑定全部网卡并提供局域网地址；服务没有登录认证，局域网访问者可以查看和编辑数据，也可以调用评测接口，因此只在受信任的私有网络使用。
 
+## Golden Dataset 审核工作台
+
+Golden Dataset 以 Query 为主键。每条 Query 关联 Fact，Fact 关联 Evidence，Evidence 与 Chunk 为多对多关系。工作台从 Fact 起草 Query，关联 Evidence，检索 RAGFlow Chunk，并运行试召回。
+
+```bash
+npm run golden
+```
+
+打开 [http://127.0.0.1:4174/](http://127.0.0.1:4174/)。数据模型、审核流程和接口说明见 [Golden Dataset 审核工具](docs/golden-dataset-review-tool.md)。
+
 ## 校验数据
 
 ```bash

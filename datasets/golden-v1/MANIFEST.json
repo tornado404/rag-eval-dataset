@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "golden-v1",
+  "status": "curation",
+  "primary_key": "query_id",
+  "files": [
+    "queries.jsonl",
+    "facts.jsonl",
+    "evidences.jsonl",
+    "chunks.jsonl",
+    "query_facts.jsonl",
+    "fact_evidence.jsonl",
+    "evidence_chunks.jsonl"
+  ],
+  "relations": {
+    "query_facts": "query → fact (requirement plus optional query-scoped group_id; required groups score every member, each required_any group is an independent choose-one condition, and ungrouped legacy required_any rows share A1)",
+    "fact_evidence": "fact → evidence (OR / AND)",
+    "evidence_chunks": "evidence ↔ chunk (many-to-many)"
+  }
+}
