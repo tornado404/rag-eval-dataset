@@ -1810,6 +1810,15 @@ textarea::placeholder {
   margin-bottom: 8px;
 }
 
+.query-facts-filters .query-facts-search {
+  max-width: 340px;
+  margin-left: auto;
+}
+
+.query-facts-filters .query-facts-search .input {
+  height: 30px;
+}
+
 .query-facts-filters .tab {
   height: 30px;
   padding: 0 9px;
@@ -1817,6 +1826,7 @@ textarea::placeholder {
 }
 
 .fact-option[hidden],
+.query-facts-search .search-clear[hidden],
 .query-facts-empty[hidden] {
   display: none;
 }
