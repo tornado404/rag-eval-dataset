@@ -38,6 +38,7 @@ function hasDryRun(argv) {
 
 function getConfig(env) {
   return {
+    enabled: env.AI_INTAKE_ENABLED,
     eventPath: env.GITHUB_EVENT_PATH,
     webhookUrl: env.MULTICA_WEBHOOK_URL,
     authorIds: env.AI_AUTHOR_IDS,
@@ -90,6 +91,7 @@ function requestOptions(url, payload, idempotencyKey) {
       'idempotency-key': idempotencyKey,
     },
     body: JSON.stringify(payload),
+    redirect: 'error',
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   };
 }
@@ -127,6 +129,10 @@ async function postWithRetry(url, payload, idempotencyKey, fetchImpl) {
 export async function run(argv = [], env = process.env, fetchImpl = fetch) {
   const dryRun = hasDryRun(argv);
   const config = getConfig(env);
+  if (config.enabled !== 'true') {
+    return { status: 'paused', network_calls: 0 };
+  }
+
   const event = await readEvent(config.eventPath);
   const result = evaluateIssueEvent(event, config);
 

@@ -24,6 +24,7 @@ The event JSON body must be no larger than 256 KiB. Oversized events are rejecte
 
 - Store the webhook URL only as the `MULTICA_WEBHOOK_URL` GitHub Actions secret.
 - Never log the webhook URL, query parameters, headers, or response bodies.
+- Require HTTPS for the configured webhook URL and reject redirects.
 - Redact URL-like values from every error message.
 - Never commit PATs, webhook URLs, tokens, or credentials.
 - Never ask an issue author to paste a secret into GitHub or Multica.
@@ -31,6 +32,7 @@ The event JSON body must be no larger than 256 KiB. Oversized events are rejecte
 ## Execution isolation
 
 - GitHub Actions uses `ubuntu-latest`, `permissions: {}`, a 3-minute timeout, and checkout with `persist-credentials: false`.
+- The issue-intake job and script both fail closed unless the `AI_INTAKE_ENABLED` repository variable is exactly `true`.
 - Only `actions/checkout@v4`, `actions/setup-node@v4`, and a local Node script run in the workflow; no third-party actions are used.
 - Coding agents work in separate sessions and isolated worktrees.
 - Developer and Reviewer are different agents; self-approval is prohibited.

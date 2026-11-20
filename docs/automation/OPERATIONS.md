@@ -8,13 +8,20 @@ The script never forwards issue titles, bodies, comments, attachments, or raw ev
 
 ## One-time setup
 
-1. Keep `MULTICA_WEBHOOK_URL` as a GitHub Actions secret. Never put it in workflow files, docs, issue text, logs, or test fixtures.
-2. Set `AI_AUTHOR_IDS` to a comma-separated list of numeric GitHub user IDs allowed to open automation-eligible issues.
-3. Set `AI_APPROVER_IDS` to a comma-separated list of numeric GitHub user IDs allowed to apply the `ai-approved` label.
-4. Configure the Multica webhook secret in the Multica UI or API. The repository contains only the secret name, never the value.
-5. Create the Multica workflow from `automation/multica/workflow-steps.json`, then configure the handoffs from `automation/multica/handoffs/` manually.
+1. Leave the `AI_INTAKE_ENABLED` repository variable unset until manual hardening is complete. The workflow is paused unless its value is exactly `true`.
+2. Keep `MULTICA_WEBHOOK_URL` as a GitHub Actions secret. Never put it in workflow files, docs, issue text, logs, or test fixtures.
+3. Set `AI_AUTHOR_IDS` to a comma-separated list of numeric GitHub user IDs allowed to open automation-eligible issues.
+4. Set `AI_APPROVER_IDS` to a comma-separated list of numeric GitHub user IDs allowed to apply the `ai-approved` label.
+5. Configure the Multica webhook secret in the Multica UI or API. The repository contains only the secret name, never the value.
+6. Create the Multica workflow from `automation/multica/workflow-steps.json`, then configure the handoffs from `automation/multica/handoffs/` manually.
 
 ## Verify configuration without network calls
+
+Run the issue-intake syntax, JSON, and behavior checks with:
+
+```sh
+node scripts/automation/check.mjs
+```
 
 The dry-run path validates the event and prints a redacted result:
 
@@ -22,15 +29,16 @@ The dry-run path validates the event and prints a redacted result:
 GITHUB_EVENT_PATH=test/fixtures/opened-allowed.json \
 AI_AUTHOR_IDS=111 \
 AI_APPROVER_IDS=333 \
+AI_INTAKE_ENABLED=true \
 node scripts/automation/issue-intake.mjs --dry-run
 ```
 
-For a live event, the workflow supplies `GITHUB_EVENT_PATH`, `MULTICA_WEBHOOK_URL`, `AI_AUTHOR_IDS`, and `AI_APPROVER_IDS` as environment variables.
+For a live event, the workflow supplies `AI_INTAKE_ENABLED`, `GITHUB_EVENT_PATH`, `MULTICA_WEBHOOK_URL`, `AI_AUTHOR_IDS`, and `AI_APPROVER_IDS` as environment variables.
 
 ## Pause and enable
 
-- Pause: disable the `ai issue intake` workflow in the GitHub Actions UI, or remove the webhook secret so no authorized request can be sent.
-- Enable: re-enable the workflow and confirm both allowlist variables are present.
+- Pause: unset `AI_INTAKE_ENABLED` or set it to anything other than `true`; disabling the workflow is also available.
+- Enable: only after manual hardening and approval, set `AI_INTAKE_ENABLED=true` and confirm the secret and both allowlist variables are present.
 - Do not pause by editing workflow triggers in `main`. Use repository settings.
 
 ## Allowlist changes
@@ -49,6 +57,7 @@ For a live event, the workflow supplies `GITHUB_EVENT_PATH`, `MULTICA_WEBHOOK_UR
 
 ## Troubleshooting
 
+- `status: paused`: set `AI_INTAKE_ENABLED=true` only after manual hardening is complete.
 - `configuration is invalid`: check `GITHUB_EVENT_PATH`, both allowlist variables, and the webhook URL configuration when the event is authorized.
 - `event is not authorized`: confirm the repository, issue state, action, author ID, label name, and approver ID.
 - `event body is too large`: the GitHub event exceeded 256 KiB; do not forward it. Re-run only after the event payload is reduced by GitHub or a manual review decision is recorded.

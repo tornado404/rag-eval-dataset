@@ -11,6 +11,7 @@ import { run } from '../scripts/automation/issue-intake.mjs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = (name) => join(root, 'test', 'fixtures', name);
 const env = (eventPath, overrides = {}) => ({
+  AI_INTAKE_ENABLED: 'true',
   GITHUB_EVENT_PATH: eventPath,
   MULTICA_WEBHOOK_URL: 'https://multica.invalid/hooks/secret-path',
   AI_AUTHOR_IDS: '111, 222',
@@ -29,6 +30,18 @@ async function loadJson(name) {
   return JSON.parse(await readFile(fixture(name), 'utf8'));
 }
 
+test('G00 stays paused unless explicitly enabled', async () => {
+  const calls = [];
+  const disabled = await run([], { AI_INTAKE_ENABLED: 'false' }, recordingFetch(calls));
+  const unconfigured = await run([], {}, recordingFetch(calls));
+  const workflow = await readFile(join(root, '.github', 'workflows', 'ai-issue-intake.yml'), 'utf8');
+
+  assert.deepEqual(disabled, { status: 'paused', network_calls: 0 });
+  assert.deepEqual(unconfigured, { status: 'paused', network_calls: 0 });
+  assert.equal(calls.length, 0);
+  assert.match(workflow, /if: vars\.AI_INTAKE_ENABLED == 'true'/);
+});
+
 test('G01 accepts an opened issue from an allowlisted author', async () => {
   const calls = [];
   const result = await run(
@@ -41,6 +54,7 @@ test('G01 accepts an opened issue from an allowlisted author', async () => {
   assert.equal(result.idempotency_key, 'raged-987654-555001-v1');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.redirect, 'error');
   assert.equal(calls[0].options.headers['idempotency-key'], 'raged-987654-555001-v1');
 
   const body = JSON.parse(calls[0].options.body);
@@ -292,7 +306,7 @@ test('G10 bounded retries reuse the same idempotency key', async () => {
   assert.deepEqual(new Set(secondRun), new Set(['raged-987654-555001-v1']));
 });
 
-test('G11 validate-skipped QA evidence is not a complete pass', async () => {
+test('G11 documents the partial-validation QA rule', async () => {
   const qa = await readFile(join(root, 'docs', 'automation', 'agents', 'QA.md'), 'utf8');
   const handoff = await readFile(
     join(root, 'automation', 'multica', 'handoffs', 'qa.md'),
@@ -305,7 +319,7 @@ test('G11 validate-skipped QA evidence is not a complete pass', async () => {
   assert.match(handoff, /awaiting_merge/);
 });
 
-test('G12 protected path policy requires human review and blocked', async () => {
+test('G12 documents protected-path human review requirements', async () => {
   const files = [
     'docs/automation/agents/Triage.md',
     'docs/automation/agents/Planner.md',

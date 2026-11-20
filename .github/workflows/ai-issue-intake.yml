@@ -7,11 +7,12 @@ on:
 permissions: {}
 
 concurrency:
-  group: raged-ai-issue-intake
+  group: raged-ai-issue-intake-${{ github.event.issue.id }}
   cancel-in-progress: false
 
 jobs:
   intake:
+    if: vars.AI_INTAKE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -27,6 +28,7 @@ jobs:
 
       - name: Forward authorized issue metadata
         env:
+          AI_INTAKE_ENABLED: ${{ vars.AI_INTAKE_ENABLED }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           MULTICA_WEBHOOK_URL: ${{ secrets.MULTICA_WEBHOOK_URL }}
           AI_AUTHOR_IDS: ${{ vars.AI_AUTHOR_IDS }}

@@ -39,3 +39,7 @@ It contains no tokens, passwords, PATs, webhook URLs, or credentials.
 ## Baseline decision
 
 The MVP forwards only structured, numeric, and URL metadata from an authorized GitHub issue event. It does not forward issue titles, bodies, comments, labels beyond the approval marker, repository descriptions, or raw webhook payloads.
+
+The intake workflow and script both remain paused unless `AI_INTAKE_ENABLED` is exactly `true`; leave the repository variable unset until manual hardening is complete.
+
+The validation workflow uses `node scripts/automation/check.mjs` when every changed path is limited to the issue-intake feature. Changes outside that scope continue to run `npm run check`, preserving the full project gate while the redacted baseline is repaired separately.
