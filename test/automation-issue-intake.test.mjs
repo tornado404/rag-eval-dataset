@@ -45,7 +45,7 @@ test('G01 accepts an opened issue from an allowlisted author', async () => {
 
   const body = JSON.parse(calls[0].options.body);
   assert.deepEqual(body, {
-    event: 'github.issue',
+    event: 'github.issue.intake',
     action: 'opened',
     repo: { name: 'tornado404/rag-eval-dataset', id: 987654 },
     github_issue_number: 42,

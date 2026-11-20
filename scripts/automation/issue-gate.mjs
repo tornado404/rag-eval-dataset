@@ -145,7 +145,7 @@ export function evaluateIssueEvent(event, config = {}) {
   return {
     matched: true,
     decision: {
-      event: 'github.issue',
+      event: 'github.issue.intake',
       action,
       repository: {
         name: repo.full_name,
