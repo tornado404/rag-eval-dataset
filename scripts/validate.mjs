@@ -1,5 +1,5 @@
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import { DATASET_ROOT, REPO_ROOT, loadDataset, loadExpectedActionMap, validateDataset, validateExpectedActionMap } from './lib/dataset.mjs';
 
 const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'MANIFEST.json'), 'utf8'));

@@ -257,7 +257,7 @@ function selectedAutoMatchCandidates() {
   const workspace = ui.evidenceWorkspace;
   return workspace.selectionOrder
     .map((chunkId) => workspace.selectedChunks.get(chunkId))
-    [REDACTED];
+    .filter(Boolean);
 }
 
 function setEvidenceMode(mode) {
@@ -327,7 +327,7 @@ async function searchEvidenceKeywords() {
     });
     const candidates = (Array.isArray(result?.chunks) ? result.chunks : [])
       .map(normalizeCandidate)
-      [REDACTED];
+      .filter(Boolean);
     workspace.keyword = keyword;
     workspace.candidates = candidates;
     workspace.candidatesByMode.keyword = candidates;
@@ -398,7 +398,7 @@ function text(value) {
 }
 
 function unique(values) {
-  return [...new Set(values.map(text)[REDACTED])];
+  return [...new Set(values.map(text).filter(Boolean))];
 }
 
 function normalizeText(value) {
@@ -462,7 +462,7 @@ function isScoringRequirement(requirement) {
 
 function queryFactRequirementCounts(links) {
   const requiredFacts = links.filter((link) => link.requirement === 'required');
-  const requiredGroups = new Set(requiredFacts.map((link) => link.group_id)[REDACTED]);
+  const requiredGroups = new Set(requiredFacts.map((link) => link.group_id).filter(Boolean));
   const alternativeGroups = new Set(links
     .filter((link) => link.requirement === 'required_any')
     .map((link) => link.group_id || 'A1'));
@@ -749,14 +749,14 @@ function chunkIdsOfFact(factId) {
 }
 
 function evidenceOfFact(factId) {
-  return evidenceIdsOfFact(factId).map(evidence)[REDACTED];
+  return evidenceIdsOfFact(factId).map(evidence).filter(Boolean);
 }
 
 function factTopicsOfEvidence(evidenceId) {
   return unique(rows('fact_evidence')
     .filter((row) => (row.evidence_ids || []).includes(evidenceId))
     .map((row) => fact(row.fact_id)?.topic)
-    [REDACTED]);
+    .filter(Boolean));
 }
 
 function statusChip(status) {
@@ -952,7 +952,7 @@ function normalizeNavigationParams(input = {}) {
 }
 
 function extendReturnChain(params, screen) {
-  const chain = text(params.returnTo).split(',')[REDACTED];
+  const chain = text(params.returnTo).split(',').filter(Boolean);
   return chain.includes(screen) ? chain.join(',') : [...chain, screen].join(',');
 }
 
@@ -1197,7 +1197,7 @@ function familyOfQuery(queryId) {
   if (!row) return [];
   const rootId = row.parent_query_id && query(row.parent_query_id) ? row.parent_query_id : row.query_id;
   return [query(rootId), ...rows('queries').filter((item) => item.parent_query_id === rootId)]
-    [REDACTED];
+    .filter(Boolean);
 }
 
 function sortedQueries() {
@@ -1244,7 +1244,7 @@ function evidenceMatches(row) {
   if (term) {
     const chunkText = chunkIdsOfEvidence(row.evidence_id)
       .map((chunkId) => localChunk(chunkId))
-      [REDACTED]
+      .filter(Boolean)
       .map((chunk) => `${chunk.document_name} ${chunk.content}`)
       .join(' ');
     const haystack = normalizeText(`${row.evidence_id} ${row.title} ${row.excerpt} ${chunkText}`);
@@ -1254,7 +1254,7 @@ function evidenceMatches(row) {
   if (ui.filters.document) {
     const docs = chunkIdsOfEvidence(row.evidence_id)
       .map((chunkId) => localChunk(chunkId)?.document_name)
-      [REDACTED];
+      .filter(Boolean);
     if (!docs.includes(ui.filters.document)) return false;
   }
   if (ui.filters.topic && !factTopicsOfEvidence(row.evidence_id).includes(ui.filters.topic)) return false;
@@ -1277,14 +1277,14 @@ function chunkMatches(row) {
 }
 
 function documentOptionsFromChunks() {
-  return unique(chunkPool().map((chunk) => chunk.document_name)[REDACTED])
+  return unique(chunkPool().map((chunk) => chunk.document_name).filter(Boolean))
     .sort((a, b) => a.localeCompare(b, 'zh-CN'));
 }
 
 function topicOptions() {
   const taxonomy = ui.data?.taxonomy?.topics || [];
   const known = new Map(taxonomy.map((item) => [item.name, item.id]));
-  const existing = rows('facts').map((row) => row.topic)[REDACTED];
+  const existing = rows('facts').map((row) => row.topic).filter(Boolean);
   return unique([...taxonomy.map((item) => item.name), ...existing])
     .map((name) => ({ name, id: known.get(name) || '' }))
     .sort((left, right) => {
@@ -1342,7 +1342,7 @@ function renderFactReview() {
     })}</div></section>`;
   }
   const queue = sortedFacts();
-  const references = rows('query_facts').filter((link) => link.fact_id === row.fact_id).map((link) => query(link.query_id))[REDACTED];
+  const references = rows('query_facts').filter((link) => link.fact_id === row.fact_id).map((link) => query(link.query_id)).filter(Boolean);
   const linkedEvidence = evidenceOfFact(row.fact_id);
   return `
     <section class="screen workbench-screen fact-review-screen">
@@ -1616,7 +1616,7 @@ function renderEvidenceCandidate(row) {
   const selected = ui.selectedEvidenceIds.has(row.evidence_id);
   const linked = evidenceIdsOfFact(ui.factId).includes(row.evidence_id);
   const chunkIds = chunkIdsOfEvidence(row.evidence_id);
-  const chunks = chunkIds.map(localChunk)[REDACTED];
+  const chunks = chunkIds.map(localChunk).filter(Boolean);
   const documentName = chunks[0]?.document_name || '';
   const page = chunks[0]?.page || '';
   return `
@@ -1717,13 +1717,13 @@ function emptyState({
 function apiErrorText(error) {
   const message = text(error?.message) || '请求失败';
   const details = Array.isArray(error?.details)
-    ? error.details.map((item) => text(item))[REDACTED].slice(0, 4)
+    ? error.details.map((item) => text(item)).filter(Boolean).slice(0, 4)
     : [];
   return details.length ? `${message}：${details.join('；')}` : message;
 }
 
 function currentDraftChunks() {
-  return unique(ui.editorDraft?.chunkIds || []).map(findChunk)[REDACTED];
+  return unique(ui.editorDraft?.chunkIds || []).map(findChunk).filter(Boolean);
 }
 
 function sameIdSet(left, right) {
@@ -1911,7 +1911,7 @@ function renderDetailPanel() {
 
 function renderActionDock() {
   const linked = evidenceOfFact(ui.factId);
-  const selected = [...ui.selectedEvidenceIds].map(evidence)[REDACTED];
+  const selected = [...ui.selectedEvidenceIds].map(evidence).filter(Boolean);
   const hasPending = selected.length > 0;
   return `
     <div class="action-dock">
@@ -3809,7 +3809,7 @@ function currentNavigationParams() {
 }
 
 function returnNavigationParams(params = currentNavigationParams()) {
-  const chain = text(params.returnTo).split(',')[REDACTED];
+  const chain = text(params.returnTo).split(',').filter(Boolean);
   const remaining = chain.slice(0, -1);
   if (!remaining.length) remaining.push(params.query ? 'workbench' : 'facts');
   return {
@@ -3822,7 +3822,7 @@ function returnNavigationParams(params = currentNavigationParams()) {
 
 function navigateFromReturnChain() {
   const params = currentNavigationParams();
-  const chain = text(params.returnTo).split(',')[REDACTED];
+  const chain = text(params.returnTo).split(',').filter(Boolean);
   const nextScreen = chain.at(-1) || 'workbench';
   navigate(nextScreen, returnNavigationParams(params));
 }
@@ -4045,7 +4045,7 @@ async function runEvidenceAutoMatch() {
     if (isStale) return;
     workspace.candidates = (Array.isArray(result?.candidates) ? result.candidates : [])
       .map(normalizeCandidate)
-      [REDACTED];
+      .filter(Boolean);
     workspace.candidatesByMode.query = workspace.candidates;
     if (workspace.mode === 'query') workspace.candidates = workspace.candidates;
     rememberEvidenceCandidates(workspace.candidates);
@@ -4152,7 +4152,7 @@ async function saveEvidenceCreateDraft() {
   const targetFact = fact(draft.fact_id);
   const chunks = unique(draft.chunks.map((chunk) => chunk.chunk_id))
     .map((chunkId) => draft.chunks.find((chunk) => chunk.chunk_id === chunkId))
-    [REDACTED];
+    .filter(Boolean);
   if (!targetFact) return evidenceCreateDraftError('目标 Fact 已不存在，请返回候选列表后重新选择。');
   if (!title) return evidenceCreateDraftError('请填写 Evidence 标题。');
   if (!excerpt) return evidenceCreateDraftError('请填写 Evidence 摘录。');
@@ -4184,7 +4184,7 @@ async function saveEvidenceCreateDraft() {
             ...candidate,
             is_linked: true,
             matched_fact_ids: unique([...candidate.matched_fact_ids, targetFact.fact_id]),
-            matched_evidence_ids: unique([...candidate.matched_evidence_ids, evidenceId][REDACTED]),
+            matched_evidence_ids: unique([...candidate.matched_evidence_ids, evidenceId].filter(Boolean)),
           }
           : candidate
       ));
@@ -4687,7 +4687,7 @@ function handleChange(event) {
     ui.topK = Number(element.value) || 12;
     render();
   } else if (action === 'set-evidence-datasets') {
-    ui.evidenceWorkspace.datasetIds = [...element.selectedOptions].map((option) => option.value)[REDACTED];
+    ui.evidenceWorkspace.datasetIds = [...element.selectedOptions].map((option) => option.value).filter(Boolean);
     render();
   } else if (action === 'select-evidence-query') {
     evidenceSelectQuery(element.value);
@@ -4920,7 +4920,7 @@ async function dispatchClickAction(action, element) {
       toast('请先选择 Fact', 'error');
       return;
     }
-    const chunks = [...ui.selectedChunkIds].map(findChunk)[REDACTED];
+    const chunks = [...ui.selectedChunkIds].map(findChunk).filter(Boolean);
     if (!chunks.length) {
       toast('请先选择至少一个 Chunk', 'info');
       return;

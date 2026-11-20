@@ -94,7 +94,7 @@ export function scoreDecisionMetrics(entries) {
 
 function countTraceValues(rows, key) {
   const counts = {};
-  [REDACTED]
+  for (const row of rows) {
     const raw = row.decision_trace?.[key];
     const value = key === 'fallback_category' ? (raw || 'none') : (raw || 'unavailable');
     counts[value] = (counts[value] || 0) + 1;
@@ -126,7 +126,7 @@ export function aggregateDecisionAttribution(rows) {
 }
 
 function qaRecallSummary(rows, pick) {
-  const withResult = rows.map(pick)[REDACTED];
+  const withResult = rows.map(pick).filter(Boolean);
   const scored = withResult.filter((entry) => entry.gold?.scorable_fact_count > 0);
   const factsScored = scored.reduce((sum, entry) => sum + entry.gold.scorable_fact_count, 0);
   const factsHit = scored.reduce((sum, entry) => sum + entry.gold.hit_fact_count, 0);
@@ -225,7 +225,7 @@ export function compareReports(base, other) {
         const baseRaw = baseline.raw_ragflow?.gold || {};
         const otherRaw = row.raw_ragflow?.gold || {};
         return {
-          [REDACTED]
+          case_id: row.case_id,
           base: {
             retrieval_state: baseline.retrieval_state || null,
             final_hit_fact_count: baseFinal.hit_fact_count ?? null,
@@ -244,7 +244,7 @@ export function compareReports(base, other) {
             : null,
         };
       })
-      [REDACTED]
+      .filter(Boolean)
       .filter((change) => change.base.retrieval_state !== change.other.retrieval_state
         || change.final_hit_delta !== 0
         || change.raw_hit_delta !== 0)

@@ -16,10 +16,10 @@ const QA_TOKEN_REFRESH_MS = 9 * 60 * 1000;
 const QA_MAX_CONSECUTIVE_FAILURES = 3;
 const QA_LOG_MAX_BYTES = 64 * 1024 * 1024;
 const QA_EVAL_CLIENT_PREFIX = 'eval-';
-export const REPORT_SCHEMA_VERSION = '[REDACTED]';
-export const METRIC_SCHEMA_VERSION = '[REDACTED]';
-export const EVALUATOR_VERSION = '[REDACTED]';
-const DECISION_ACTIONS = ['answer', 'clarify', '[REDACTED]', 'escalate_human', '[REDACTED]', 'refuse_domain', 'other'];
+export const REPORT_SCHEMA_VERSION = 'evaluation-report/v1';
+export const METRIC_SCHEMA_VERSION = 'evaluation-metrics/v1';
+export const EVALUATOR_VERSION = 'ai-qa-eval/2.0.0';
+const DECISION_ACTIONS = ['answer', 'clarify', 'compliance_block', 'escalate_human', 'insufficient_evidence', 'refuse_domain', 'other'];
 const OBSERVATION_RETRIEVAL_STATES = new Set(['not_attempted', 'effective_empty', 'unavailable', 'success']);
 const SECRET_PATTERNS = [
   ['bearer token', /Bearer\s+[A-Za-z0-9._~+/=-]+/gi],
@@ -37,7 +37,7 @@ const DOCKER_BIN_CANDIDATES = [
   '/usr/local/bin/docker',
   '/opt/homebrew/bin/docker',
   '/Applications/Docker.app/Contents/Resources/bin/docker',
-][REDACTED];
+].filter(Boolean);
 let cachedDockerBin = '';
 
 class RemoteError extends Error {
@@ -124,7 +124,7 @@ function projectQaDecisionTrace(entry, fallbackDecision) {
   const decision = fallbackDecision || {};
   return {
     status: entry ? 'observed' : 'unavailable',
-    unavailable_reason: entry ? null : '[REDACTED]',
+    unavailable_reason: entry ? null : 'missing_decision_trace_log',
     mode: entry?.mode ?? fallbackDecision?.mode ?? null,
     intent: firstText([trace.intent, trace.intent_name, decision.intent]) || null,
     action: firstText([trace.action, decision.action]) || null,
@@ -132,10 +132,10 @@ function projectQaDecisionTrace(entry, fallbackDecision) {
     safety_flags: {
       refuse_domain: trace.refuse_domain ?? decision.refuse_domain ?? null,
       clarify: trace.clarify ?? decision.clarify ?? null,
-      [REDACTED]: trace.[REDACTED] ?? decision.[REDACTED] ?? null,
+      insufficient_evidence: trace.insufficient_evidence ?? decision.insufficient_evidence ?? null,
       safety_signal: trace.safety_signal ?? decision.safety_signal ?? null,
       emergency_signal: trace.emergency_signal ?? decision.emergency_signal ?? null,
-      [REDACTED]: trace.[REDACTED] ?? decision.[REDACTED] ?? null,
+      compliance_block: trace.compliance_block ?? decision.compliance_block ?? null,
       safety_clarify: trace.safety_clarify ?? decision.safety_clarify ?? null,
     },
     source: firstText([trace.source, trace.classifier_source, trace.model_source]) || 'unavailable',
@@ -227,7 +227,7 @@ export function normalizeEvaluationRequest(body) {
       config.ragflowBaseUrl = validHttpUrl(raw.ragflowBaseUrl, 'RAGFlow API 根地址', { allowPath: false });
       config.ragflowApiKey = requiredText(raw.ragflowApiKey, 'RAGFlow API Key');
       config.datasetIds = [...new Set((Array.isArray(raw.datasetIds) ? raw.datasetIds : [])
-        .map((item) => String(item).trim())[REDACTED])];
+        .map((item) => String(item).trim()).filter(Boolean))];
       if (!config.datasetIds.length) throw new Error('至少选择一个 RAGFlow 数据集');
     }
   } else {
@@ -436,7 +436,7 @@ function missingProtectedTerms(question, rewrittenQuery) {
 }
 
 function uniqueIds(values) {
-  return [...new Set(values.map((value) => String(value || '').trim())[REDACTED])];
+  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
 }
 
 async function retrieve(config, query, signal) {
@@ -493,22 +493,22 @@ function evidenceChunkIds(evidence) {
 
 function goldGroupsByFact(dataset) {
   const evidenceById = new Map(dataset.evidences.map((row) => [row.evidence_id, row]));
-  [REDACTED]
+  const groupsByFact = new Map();
   for (const relation of dataset.fact_evidence_relations) {
-    [REDACTED]
+    const groups = groupsByFact.get(relation.fact_id) || [];
     groups.push({
-      [REDACTED]
+      operator: String(relation.operator || '').toUpperCase(),
       evidence_ids: Array.isArray(relation.evidence_ids) ? relation.evidence_ids : [],
       chunk_ids: (relation.evidence_ids || []).map((id) => evidenceById.get(id)?.ragflow_chunk_id || ''),
       chunk_id_sets: (relation.evidence_ids || []).map((id) => evidenceChunkIds(evidenceById.get(id))),
     });
-    [REDACTED]
+    groupsByFact.set(relation.fact_id, groups);
   }
   return groupsByFact;
 }
 
 function assessGold(requiredFactIds, retrievedIds, groupsByFact, k = TOP_K) {
-  [REDACTED]
+  const retrieved = new Set(retrievedIds);
   const facts = [];
   for (const factId of uniqueIds(requiredFactIds || [])) {
     const groups = groupsByFact.get(factId) || [];
@@ -525,16 +525,16 @@ function assessGold(requiredFactIds, retrievedIds, groupsByFact, k = TOP_K) {
     const groupHit = (group) => {
       const sets = group.chunk_id_sets || group.chunk_ids.map((id) => (id ? [id] : []));
       const hits = sets.map((ids) => ids.some((id) => retrieved.has(id)));
-      [REDACTED]
+      return group.operator === 'OR' ? hits.some(Boolean) : hits.every(Boolean);
     };
     const matchedGroup = validGroups.find(groupHit);
     const hitEvidenceIds = matchedGroup
       ? matchedGroup.evidence_ids.filter((_, index) => {
-        const ids = matchedGroup.chunk_id_sets?.[index] || [matchedGroup.chunk_ids[index]][REDACTED];
+        const ids = matchedGroup.chunk_id_sets?.[index] || [matchedGroup.chunk_ids[index]].filter(Boolean);
         return ids.some((id) => retrieved.has(id));
       })
       : [];
-    facts.push({ fact_id: factId, scorable: true, [REDACTED] hit_evidence_ids: hitEvidenceIds });
+    facts.push({ fact_id: factId, scorable: true, hit: Boolean(matchedGroup), hit_evidence_ids: hitEvidenceIds });
   }
   const scorable = facts.filter((fact) => fact.scorable);
   const hit = scorable.filter((fact) => fact.hit).length;
@@ -796,11 +796,11 @@ async function qaAskTurn(config, auth, question, clientTurnId, signal) {
     config,
     auth,
     'POST',
-    '[REDACTED]',
+    '/api/v1/qa/turns',
     {
       question: [{ type: 'text', text: question }],
-      [REDACTED]
-      [REDACTED]
+      deliver: 'auto',
+      client_turn_id: clientTurnId,
     },
     signal,
     'M3 AI 问答',
@@ -856,7 +856,7 @@ async function qaListOpenCustomerSessions(config, auth, userId, signal) {
   let cursor = '';
   for (let page = 0; page < QA_CONVERSATION_MAX_PAGES; page += 1) {
     const search = new URLSearchParams({
-      link_type: '[REDACTED]',
+      link_type: 'customer_service',
       limit: String(QA_CONVERSATION_PAGE_LIMIT),
     });
     if (cursor) search.set('cursor', cursor);
@@ -897,7 +897,7 @@ async function qaListCustomerMessages(config, auth, userId, signal, { minCreated
   let cursor = '';
   for (let page = 0; page < QA_CONVERSATION_MAX_PAGES; page += 1) {
     const search = new URLSearchParams({
-      link_type: '[REDACTED]',
+      link_type: 'customer_service',
       limit: String(QA_CONVERSATION_PAGE_LIMIT),
     });
     if (cursor) search.set('cursor', cursor);
@@ -941,7 +941,7 @@ function qaSessionMessageSafety(messages, sessionId, clientTurnId = '') {
   const scoped = messages.filter((item) => String(item?.session_id || '').trim() === sessionId);
   const userMessages = scoped.filter((item) => String(item?.role || '').trim().toLowerCase() === 'user');
   const unsafe = userMessages.filter((item) => !qaIsEvalClientMessageId(item?.client_message_id));
-  const turnIds = userMessages.map((item) => String(item?.client_message_id || '').trim())[REDACTED];
+  const turnIds = userMessages.map((item) => String(item?.client_message_id || '').trim()).filter(Boolean);
   return {
     messages: scoped.length,
     user_messages: userMessages.length,
@@ -989,7 +989,7 @@ async function qaPrepareIsolatedSessions(config, auth, signal) {
   const token = await qaAccessToken(config, auth, signal);
   const userId = qaUserIdFromJwt(token);
   const openSessions = await qaListOpenCustomerSessions(config, auth, userId, signal);
-  [REDACTED]
+  const result = {
     userId,
     safeToClose: true,
     preflightAction: 'none',
@@ -1019,7 +1019,7 @@ async function qaPrepareIsolatedSessions(config, auth, signal) {
   return {
     ...result,
     safeToClose: true,
-    preflightAction: '[REDACTED]',
+    preflightAction: 'closed_eval_session',
     preflightClosed: true,
     preflightSessionId: open.sessionId,
     preflightUserMessages: safety.user_messages,
@@ -1061,7 +1061,7 @@ async function qaCleanupFailedTurn(config, auth, userId, signal, runStartedAt) {
 
 function qaGoldSummary(records, pick) {
   const entries = records.map(pick);
-  const present = entries[REDACTED];
+  const present = entries.filter(Boolean);
   const scored = present.filter((entry) => entry.gold?.scorable_fact_count > 0);
   const recalls = scored.map((entry) => entry.gold.recall_at_k).filter(Number.isFinite);
   const ks = scored.map((entry) => entry.gold.k).filter(Number.isFinite);
@@ -1154,10 +1154,10 @@ export function projectQaDecision(entry) {
     action_reason: decision.action_reason ?? null,
     refuse_domain: decision.refuse_domain ?? null,
     clarify: decision.clarify ?? null,
-    [REDACTED]: decision.[REDACTED] ?? null,
+    insufficient_evidence: decision.insufficient_evidence ?? null,
     safety_signal: decision.safety_signal ?? null,
     emergency_signal: decision.emergency_signal ?? null,
-    [REDACTED]: decision.[REDACTED] ?? null,
+    compliance_block: decision.compliance_block ?? null,
     safety_clarify: decision.safety_clarify ?? null,
     expand_query: decision.expand_query ?? null,
   };
@@ -1332,14 +1332,14 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
     const action = actionMap.cases?.[item.case_id] || {};
     const clientTurnId = `eval-${randomUUID()}`;
     const row = {
-      [REDACTED]
-      [REDACTED]
+      case_id: item.case_id,
+      question: item.question,
       expected_behavior: output?.expected_behavior || null,
       expected_action: action.expected_action ?? null,
       scoreable: Boolean(action.scoreable),
       recall_cohort: output?.expected_behavior === 'answer' && (output.required_fact_ids || []).length > 0,
       required_fact_ids: output.required_fact_ids || [],
-      [REDACTED]
+      client_turn_id: clientTurnId,
       qa: null,
       session_closed: false,
       observation: null,
@@ -1399,18 +1399,18 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
 
     records.push(row);
     sessionIsolation.cases.push({
-      [REDACTED]
+      case_id: item.case_id,
       session_id: row.qa?.session_id || '',
       session_closed: row.session_closed,
       error: Boolean(row.error),
       cleanup_closed: row.session_cleanup?.closed || [],
     });
     progressCounts.api.done += 1;
-    onProgress({ completed: index + 1, total: cases.length, [REDACTED] counts: structuredClone(progressCounts) });
+    onProgress({ completed: index + 1, total: cases.length, case_id: item.case_id, counts: structuredClone(progressCounts) });
   }
 
   const warnings = [];
-  const caseSessionIds = records.map((row) => row.qa?.session_id)[REDACTED];
+  const caseSessionIds = records.map((row) => row.qa?.session_id).filter(Boolean);
   sessionIsolation.cases_with_session = caseSessionIds.length;
   sessionIsolation.cases_closed = records.filter((row) => row.session_closed).length;
   sessionIsolation.unique_sessions = new Set(caseSessionIds).size;
@@ -1461,7 +1461,7 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
       };
       if (reportedRetrieval === 'not_attempted') {
         row.retrieval_state = 'not_retrieved';
-        row.retrieval_state_reason = '[REDACTED]';
+        row.retrieval_state_reason = 'retrieval_not_attempted';
         continue;
       }
       if (reportedRetrieval === 'unavailable') {
@@ -1486,7 +1486,7 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
           : 'empty_chunk_arrays_observed';
       } else {
         row.retrieval_state = 'scored';
-        row.retrieval_state_reason = '[REDACTED]';
+        row.retrieval_state_reason = 'chunk_observations_available';
       }
       const finalK = finalIds.length;
       row.final = {
@@ -1506,7 +1506,7 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
       const earlyExitActions = countBy(earlyExit.map((row) => row.decision.action));
       const actionText = Object.entries(earlyExitActions).map(([action, count]) => `${action}=${count}`).join(', ');
       warnings.push(
-        `${missing} 题未在 docker logs 中找到 turn_observation；其中 ${earlyExit.length} 题由 Decision 提前返回${actionText ? `（${actionText}）` : ''}，不是接口调用失败。[REDACTED]`,
+        `${missing} 题未在 docker logs 中找到 turn_observation；其中 ${earlyExit.length} 题由 Decision 提前返回${actionText ? `（${actionText}）` : ''}，不是接口调用失败。这些题不参与 Recall/Hit 统计，不能用接口 citations 替代。`,
       );
     }
     const legacyUnscorable = records.filter((row) => row.observation?.legacy_schema_unscorable);
@@ -1621,7 +1621,7 @@ export async function runEvaluation(dataset, request, { signal, onProgress = () 
   const { mode, config } = request;
   const outputById = new Map(dataset.expected_outputs.map((row) => [row.case_id, row]));
   const allCases = dataset.cases.filter((row) => {
-    [REDACTED]
+    const output = outputById.get(row.case_id);
     return output?.expected_behavior === 'answer' && (output.required_fact_ids || []).length > 0;
   });
   const cases = config.maxCases > 0 ? allCases.slice(0, config.maxCases) : allCases;
@@ -1636,8 +1636,8 @@ export async function runEvaluation(dataset, request, { signal, onProgress = () 
     const item = cases[index];
     const output = outputById.get(item.case_id);
     const row = {
-      [REDACTED]
-      [REDACTED]
+      case_id: item.case_id,
+      question: item.question,
       required_fact_ids: output.required_fact_ids || [],
       original: null,
       rewritten: null,

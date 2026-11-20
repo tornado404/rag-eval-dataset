@@ -1,5 +1,5 @@
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import { DATASET_ROOT, datasetDir, readJsonl } from './lib/dataset.mjs';
 import { validateState } from './lib/golden.mjs';
 
@@ -97,7 +97,7 @@ function buildState(data) {
     const candidates = data.cases
       .filter((item) => (item.required_fact_ids || []).includes(row.fact_id))
       .map((item) => scenarioByCase.get(item.scenario_id))
-      [REDACTED];
+      .filter(Boolean);
     const firstCandidate = candidates[0]
       || scenarioByCase.get(data.cases.find((item) => (item.optional_fact_ids || []).includes(row.fact_id))?.scenario_id)
       || data.scenarios[index % data.scenarios.length];
@@ -106,7 +106,7 @@ function buildState(data) {
       row.source_condition ? `来源条件：${row.source_condition}` : '',
       row.reviewer ? `审核人：${row.reviewer}` : '',
       `v1.5 事实 ${row.fact_id}`,
-    ][REDACTED];
+    ].filter(Boolean);
     return {
       fact_id: row.fact_id,
       statement,
@@ -239,7 +239,7 @@ assertEmptyTarget();
 const data = loadV15();
 const state = buildState(data);
 writeState(state);
-[REDACTED]
+console.log(JSON.stringify({
   source_version: 'v1.5',
   target_version: 'golden-v1',
 }, null, 2));

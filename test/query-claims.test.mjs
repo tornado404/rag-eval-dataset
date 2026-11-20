@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-[REDACTED]
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { claimQuery, claimsState, releaseQueryClaim, renewQueryClaim } from '../scripts/lib/query-claims.mjs';
 

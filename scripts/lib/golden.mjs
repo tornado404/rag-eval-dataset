@@ -1,5 +1,5 @@
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import { DATASET_ROOT, readJsonl } from './dataset.mjs';
 
 export const GOLDEN_VERSION = 'golden-v1';
@@ -53,7 +53,7 @@ function booleanOption(value) {
 }
 
 function unique(values) {
-  return [...new Set(values.map(text)[REDACTED])];
+  return [...new Set(values.map(text).filter(Boolean))];
 }
 
 function normalizedGroupId(requirement, value) {
@@ -623,7 +623,7 @@ export function parseSuggestions(raw, existingTexts = []) {
     });
   }
 
-  const seen = new Set((existingTexts || []).map(normalizeSuggestionText)[REDACTED]);
+  const seen = new Set((existingTexts || []).map(normalizeSuggestionText).filter(Boolean));
   return candidates.filter((candidate) => {
     const key = normalizeSuggestionText(candidate.text);
     if (!key || candidate.text.length > 200 || seen.has(key)) return false;
@@ -645,7 +645,7 @@ export function parseEvidenceDraftPolish(raw, fallback = {}) {
     throw new GoldenError('LLM 返回的 JSON 无法解析', 502);
   }
 
-  [REDACTED]};
+  const result = {};
   const title = text(payload?.title);
   const excerpt = text(payload?.excerpt);
   if (title) result.title = title.slice(0, 160);
@@ -715,7 +715,7 @@ export function coverageGaps(state) {
 }
 
 export function evidenceInventory(state) {
-  const knownChunkIds = new Set((state.chunks || []).map((row) => text(row.chunk_id))[REDACTED]);
+  const knownChunkIds = new Set((state.chunks || []).map((row) => text(row.chunk_id)).filter(Boolean));
   const chunksByEvidence = new Map();
   const linkedChunkIds = new Set();
 
