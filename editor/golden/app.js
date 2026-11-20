@@ -3023,7 +3023,9 @@ function renderEvidenceLibrary() {
             const id = isEvidence ? row.evidence_id : row.chunk_id;
             const count = isEvidence ? chunkIdsOfEvidence(id).length : evidenceReferencingChunk(id).length;
             const item = `<button class="relationship-queue-item ${workflow[key] === id ? 'active' : ''}" data-action="select-workspace-item" data-id="${attr(id)}" aria-current="${workflow[key] === id}" type="button" ${ui.busy ? 'disabled' : ''}><strong>${esc(isEvidence ? row.title || '未命名 Evidence' : row.document_name || row.document_id || '未命名文档')}</strong><span>${esc(compactExcerpt(isEvidence ? row.excerpt : row.content, 120))}</span><span class="relationship-queue-meta"><span class="mono">${esc(id)}</span>${isEvidence ? statusChip(row.status) : ''}<span class="chip ${count ? 'good' : 'warn'}">${count} ${isEvidence ? 'Chunk' : 'Evidence'}</span></span></button>`;
-            return isEvidence ? item : `<div class="relationship-queue-entry">${item}${availabilityButton(row, 'relationship-queue-availability')}</div>`;
+            if (!isEvidence) return `<div class="relationship-queue-entry">${item}${availabilityButton(row, 'relationship-queue-availability')}</div>`;
+            const statusControl = `<select class="select relationship-queue-availability" data-action="set-evidence-status" data-id="${attr(id)}" aria-label="${attr(id)} 的审核状态" ${ui.busy ? 'disabled' : ''}>${Object.entries(STATUS_LABELS).map(([value, label]) => `<option value="${attr(value)}" ${row.status === value ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+            return `<div class="relationship-queue-entry">${item}${statusControl}</div>`;
           }).join('') : emptyState({ title: collection.length ? '没有符合筛选的条目' : `${kind} 库为空`, copy: collection.length ? '清空搜索或切换“全部”继续处理。' : isEvidence ? '可切换“从 Chunk 处理”创建 Evidence。' : '展开右侧 RAGFlow 检索，查找原始 Chunk 后逐条处理。', compact: true })}
         </div>
       </aside>
@@ -4176,6 +4178,17 @@ async function saveEvidence({ success = '' } = {}) {
   return result;
 }
 
+async function setEvidenceStatus(evidenceId, status) {
+  if (ui.busy) return;
+  const row = evidence(evidenceId);
+  if (!row) return toast('Evidence 不存在或已被删除', 'error');
+  if (!Object.prototype.hasOwnProperty.call(STATUS_LABELS, status)) return toast('无效的 Evidence 状态', 'error');
+  if (row.status === status) return;
+  await runMutation(() => api.saveEntity('evidences', { ...row, status }), {
+    success: `${evidenceId} 状态已更新为「${STATUS_LABELS[status]}」`,
+  });
+}
+
 async function linkSelectedEvidence() {
   if (!fact(ui.factId)) {
     toast('请先选择 Fact', 'error');
@@ -4588,7 +4601,7 @@ function handleCompositionEnd(event) {
   }
 }
 
-function handleChange(event) {
+async function handleChange(event) {
   const element = event.target.closest('[data-bind], [data-action]');
   if (!element) return;
   if (element.dataset.bind) {
@@ -4626,6 +4639,8 @@ function handleChange(event) {
   } else if (action === 'set-evidence-datasets') {
     ui.evidenceWorkspace.datasetIds = [...element.selectedOptions].map((option) => option.value).filter(Boolean);
     render();
+  } else if (action === 'set-evidence-status' && ui.screen === 'evidence') {
+    await setEvidenceStatus(element.dataset.id || '', element.value);
   } else if (action === 'select-evidence-query') {
     evidenceSelectQuery(element.value);
   } else if (action === 'select-evidence-fact') {

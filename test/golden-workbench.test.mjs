@@ -85,6 +85,7 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     },
     async saveEntity(type, body) {
       calls.push({ type: 'entity', entityType: type, body: structuredClone(body) });
+      if (type === 'evidences' && options.rejectEvidenceStatus) throw new Error('Evidence status save failed');
       const { row } = upsertEntity(serverState, type, body);
       return { row: structuredClone(row), state: structuredClone(serverState) };
     },
@@ -127,6 +128,7 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     get hash() { return currentHash; },
     get html() { return nodes.get('#view').innerHTML; },
     get modalHtml() { return nodes.get('#modal-root').innerHTML; },
+    get toastHtml() { return nodes.get('#toast-root').innerHTML; },
     async click(action, dataset = {}) {
       const element = { dataset: { action, ...dataset }, tagName: 'BUTTON', classList: { contains: () => false } };
       await listeners.get('click')({ target: { closest: () => element }, preventDefault() {}, stopPropagation() {} });
@@ -134,7 +136,7 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     },
     async change(action, id, value) {
       const element = { dataset: { action, id }, tagName: 'SELECT', value };
-      listeners.get('change')({ target: { closest: () => element } });
+      await listeners.get('change')({ target: { closest: () => element } });
       await new Promise(setImmediate);
     },
     async input(bind, value) {
@@ -445,6 +447,40 @@ test('Evidence relationships open without a Query and prioritize missing sources
   assert.match(app.html, /data-workspace-chunk="C_TEST_001"/);
   assert.match(app.html, /第一段完整原文。/);
   assert.deepEqual(app.calls, []);
+});
+
+test('Evidence queue saves an item status using the supported status values', async () => {
+  const state = evidenceFixture();
+  state.queries = [];
+  state.query_facts = [];
+  const app = await openApp('#evidence', state);
+  await app.click('select-workspace-item', { id: 'E_TEST_002' });
+
+  assert.match(app.html, /data-action="set-evidence-status" data-id="E_TEST_002"/);
+  for (const value of ['draft', 'review', 'approved']) assert.match(app.html, new RegExp(`option value="${value}"`));
+  await app.change('set-evidence-status', 'E_TEST_002', 'approved');
+
+  assert.deepEqual(app.calls, [{
+    type: 'entity', entityType: 'evidences',
+    body: { evidence_id: 'E_TEST_002', title: '另一条证据', excerpt: '补充的核验原文。', status: 'approved' },
+  }]);
+  assert.equal(app.serverState.evidences.find((row) => row.evidence_id === 'E_TEST_002').status, 'approved');
+  assert.match(app.html, /data-id="E_TEST_002" aria-current="true"/);
+  assert.match(app.html, /<option value="approved" selected>已确认<\/option>/);
+});
+
+test('a failed Evidence status save preserves the persisted status and reports the error', async () => {
+  const state = evidenceFixture();
+  state.queries = [];
+  state.query_facts = [];
+  const app = await openApp('#evidence', state, { rejectEvidenceStatus: true });
+  await app.click('select-workspace-item', { id: 'E_TEST_002' });
+  await app.change('set-evidence-status', 'E_TEST_002', 'approved');
+
+  assert.equal(app.serverState.evidences.find((row) => row.evidence_id === 'E_TEST_002').status, 'review');
+  assert.match(app.html, /<option value="review" selected>待复核<\/option>/);
+  assert.match(app.toastHtml, /Evidence status save failed/);
+  assert.equal(app.calls.length, 1);
 });
 
 test('Evidence additions preserve its existing sources and stay on the current Evidence', async () => {
