@@ -147,6 +147,27 @@ Chunk 卡片上的 `禁用` / `启用` 会调用 RAGFlow `PATCH /api/v1/datasets
 
 Fact 的审核状态可在 Fact 库编辑，也可在“管理 Query 的 Facts”面板中直接修改。它是 Fact 的全局状态，会影响所有引用该 Fact 的 Query；试跑中的“命中 / 未命中”只表示本次召回结果。
 
+### Query 领取单
+
+Query 清单支持无账号分工。同事在页面设置显示名后，可以领取一条 Query。显示名保存在各自浏览器的 `localStorage`，服务端只记录领取事实。每个 Query 同时只有一条有效领取，默认 30 分钟过期。本人重复领取保持原记录；他人领取会返回 409 并显示当前 owner。领取人可点击标记释放，其他人只能在过期后领取。
+
+领取记录写在 `datasets/golden-v1/query-claims.jsonl`，与七张核心 JSONL 分开。每行是一条领取事实。
+
+```json
+{
+  "schema_version": "golden-query-claim/v1",
+  "subject_type": "query",
+  "subject_id": "Q00001",
+  "owner": "张三",
+  "claimed_at": "2026-11-20T02:00:00.000Z",
+  "expires_at": "2026-11-20T02:30:00.000Z"
+}
+```
+
+领取单不是审核记录，也不写入 `status` 或 `reviewer`。清空该文件只影响分工状态，不影响金标准数据。部署时 `GOLDEN_DATA_DIR` 应指向代码目录外的持久化目录，避免重新部署覆盖领取记录。
+
+### 召回结果对照
+
 召回试跑的宽窗顶部可切换当前 Query 的 Fact，下面并排比较预期与实际结果。左栏展示所选 Fact 关联的 Evidence，以及每个 Gold Chunk 的标题和完整本地快照原文；快照缺失时显示“无本地快照”。右栏展示 RAGFlow 本轮 Top-K 的完整 Chunk 原文。`matched` 标记只针对当前选中的 Fact：某个实际结果出现在该 Fact 的 `matched_chunk_ids` 中时才会显示，用于对照预期 Chunk 与本次真实召回。切换 Fact 不会重新检索，也不会改变评分。
 
 ## 接口
@@ -157,6 +178,9 @@ Fact 的审核状态可在 Fact 库编辑，也可在“管理 Query 的 Facts�
 | --- | --- | --- |
 | GET | `/api/golden/state` | 全量状态 + 配置可用性 |
 | GET | `/api/golden/evidence/inventory` | Evidence/Chunk 数量、关联和孤立统计 |
+| POST | `/api/golden/query-claims/claim` | 领取 Query；重复领取同一 owner 时幂等 |
+| POST | `/api/golden/query-claims/renew` | 领取人续期 |
+| POST | `/api/golden/query-claims/release` | 领取人释放；重复释放幂等 |
 | POST | `/api/golden/entities/:type` | 新增/更新 query / fact / evidence / chunk |
 | DELETE | `/api/golden/entities/:type/:id` | 删除实体并级联清理关系 |
 | POST | `/api/golden/links/query-facts` | 覆盖 Query 的 Fact 集合 |
