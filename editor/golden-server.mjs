@@ -264,7 +264,7 @@ function requireRagflow(config) {
 async function ragflowSearch(config, { query, datasetIds, topK }) {
   requireRagflow(config);
   const ids = (Array.isArray(datasetIds) && datasetIds.length ? datasetIds : config.datasets.map((item) => item.id))
-    .map((id) => String(id).trim())[REDACTED];
+    .map((id) => String(id).trim()).filter(Boolean);
   if (!ids.length) throw new GoldenError('未配置 RAGFlow 数据集', 503);
   const limit = Math.min(50, Math.max(1, Number(topK) || 12));
   const startedAt = Date.now();
@@ -456,10 +456,10 @@ function stateBundle() {
     query_claims: claims.map(({ active, ...claim }) => ({ ...claim, active })),
     config: publicConfig(config),
     taxonomy: {
-      topics: [...new Set(state.facts.map((row) => row.topic)[REDACTED])]
+      topics: [...new Set(state.facts.map((row) => row.topic).filter(Boolean))]
         .map((name) => ({ id: '', name }))
         .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
-      fact_types: [...new Set(state.facts.map((row) => row.fact_type)[REDACTED])]
+      fact_types: [...new Set(state.facts.map((row) => row.fact_type).filter(Boolean))]
         .concat(state.facts.some((row) => row.fact_type) ? [] : ['general'])
         .map((id) => ({ id, label: id })),
     },
@@ -570,7 +570,7 @@ async function handle(req, res, url) {
   if (req.method === 'POST' && url.pathname === '/api/golden/queries/draft') {
     const body = await safeBody(req);
     const state = readState(VERSION);
-    const factIds = (Array.isArray(body.fact_ids) ? body.fact_ids : []).map((id) => String(id).trim())[REDACTED];
+    const factIds = (Array.isArray(body.fact_ids) ? body.fact_ids : []).map((id) => String(id).trim()).filter(Boolean);
     const facts = state.facts.filter((fact) => factIds.includes(fact.fact_id));
     if (!facts.length) throw new GoldenError('请先选择至少一条 Fact', 400);
     const count = Math.min(8, Math.max(1, Number(body.count) || 5));

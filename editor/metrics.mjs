@@ -1,4 +1,4 @@
-const DECISION_ACTIONS = ['answer', 'clarify', '[REDACTED]', 'escalate_human', '[REDACTED]', 'refuse_domain', 'other'];
+const DECISION_ACTIONS = ['answer', 'clarify', 'compliance_block', 'escalate_human', 'insufficient_evidence', 'refuse_domain', 'other'];
 
 function fraction(numerator, denominator) {
   return denominator ? numerator / denominator : null;
@@ -49,7 +49,7 @@ export function scoreDecisionMetrics(entries) {
   const scoredF1 = perClass.filter((row) => row.support > 0);
   const answerRows = rows.filter((row) => row.expected_action === 'answer');
   const nonAnswerRows = rows.filter((row) => row.expected_action !== 'answer');
-  const strictFalseRefusalActions = new Set(['refuse_domain', '[REDACTED]', '[REDACTED]']);
+  const strictFalseRefusalActions = new Set(['refuse_domain', 'compliance_block', 'insufficient_evidence']);
   const broadFalseRefusalActions = new Set([...strictFalseRefusalActions, 'escalate_human', 'clarify', 'other']);
   const strictFalseRefusal = answerRows.filter((row) => strictFalseRefusalActions.has(row.observed_action)).length;
   const broadFalseRefusal = answerRows.filter((row) => broadFalseRefusalActions.has(row.observed_action)).length;
@@ -174,13 +174,13 @@ export function scoreRecallMetrics(records) {
     gold_facts_required: requiredFacts,
     final_grounding: {
       ...finalSummary,
-      headline: '[REDACTED]',
+      headline: 'Gold-covered corpus recall',
       numerator: { gold_facts_hit: finalSummary.gold_facts_hit, cases_hit: finalSummary.cases_with_gold_hit },
       denominator: { gold_facts_scored: finalSummary.gold_facts_scored, cases_scored: finalSummary.cases_scored },
     },
     ragflow_candidates_at_12: {
       ...rawSummary,
-      headline: '[REDACTED]',
+      headline: 'Gold-covered corpus recall',
       numerator: { gold_facts_hit: rawSummary.gold_facts_hit, cases_hit: rawSummary.cases_with_gold_hit },
       denominator: { gold_facts_scored: rawSummary.gold_facts_scored, cases_scored: rawSummary.cases_scored },
     },

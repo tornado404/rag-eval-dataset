@@ -19,8 +19,8 @@ test('decision scoring uses scoreable cases and separates false refusal from fal
     scored('CASE-001', 'answer', 'answer'),
     scored('CASE-002', 'answer', 'refuse_domain'),
     scored('CASE-003', 'answer', 'clarify'),
-    scored('CASE-004', '[REDACTED]', '[REDACTED]'),
-    scored('CASE-005', '[REDACTED]', 'answer'),
+    scored('CASE-004', 'compliance_block', 'compliance_block'),
+    scored('CASE-005', 'compliance_block', 'answer'),
     { case_id: 'CASE-006', expected_action: null, observed_action: 'answer', scoreable: false },
     { case_id: 'CASE-007', expected_action: 'answer', observed_action: null, scoreable: true },
   ]);
@@ -35,7 +35,7 @@ test('decision scoring uses scoreable cases and separates false refusal from fal
   assert.equal(result.false_answer.cases, 1);
   assert.equal(result.false_answer.denominator, 2);
   assert.equal(result.confusion.find((row) => row.expected === 'answer' && row.observed === 'refuse_domain').count, 1);
-  assert.equal(result.per_class.find((row) => row.action === '[REDACTED]').support, 2);
+  assert.equal(result.per_class.find((row) => row.action === 'compliance_block').support, 2);
   assert.equal(result.observed_coverage.observed, 5);
   assert.equal(result.observed_coverage.cohort, 7);
 });
@@ -80,10 +80,10 @@ test('recall scoring rejects not-retrieved cases and missing observations instea
 
 function report(overrides = {}) {
   return {
-    report_schema_version: '[REDACTED]',
+    report_schema_version: 'evaluation-report/v1',
     status: 'complete',
     dataset: { digest: 'dataset-a', action_map: { digest: 'actions-a' } },
-    metric_schema_version: '[REDACTED]',
+    metric_schema_version: 'evaluation-metrics/v1',
     evaluation: { top_k: 12, cohorts: { decision: 7, recall: 3 } },
     run: { build_sha: 'build-a', decision: { mode: 'enforce' } },
     summary: { decision: { accuracy: 0.8 }, final_grounding: { recall_at_k: 0.1 } },
