@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap 'status=$?; echo "DEPLOY_ERROR line=${BASH_LINENO[0]} status=$status command=$BASH_COMMAND" >&2; exit "$status"' ERR
 
 if [[ -z "${GITHUB_WORKSPACE:-}" ]]; then
   echo "GITHUB_WORKSPACE is required; run this script from the deploy workflow" >&2
@@ -19,7 +20,7 @@ GOLDEN_PORT="4183"
 CONFIG_DIR="$HOME/.config/rag-eval-dataset"
 EVAL_CONFIG="$CONFIG_DIR/eval.env"
 GOLDEN_CONFIG="$CONFIG_DIR/golden.env"
-LAN_INTERFACE="$(route -n get default 2>/dev/null | awk '$1 == "interface:" {print $2; exit}')"
+LAN_INTERFACE="$({ route -n get default 2>/dev/null || true; } | awk '$1 == "interface:" {print $2; exit}')"
 LAN_IP=""
 if [[ -n "$LAN_INTERFACE" ]]; then
   LAN_IP="$(ipconfig getifaddr "$LAN_INTERFACE" 2>/dev/null || true)"
