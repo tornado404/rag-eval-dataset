@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { applyFactEvidence, applyQueryFactManagement, emptyState, upsertEntity } from '../scripts/lib/golden.mjs';
+import { applyEvidenceChunks, applyFactEvidence, applyQueryFactManagement, createEvidence, emptyState, evidenceInventory, upsertEntity } from '../scripts/lib/golden.mjs';
 
 const appSource = fs.readFileSync(new URL('../editor/golden/app.js', import.meta.url), 'utf8')
   .replace("import * as api from './api.js';", 'const api = globalThis.testApi;');
@@ -30,6 +30,22 @@ function fixture() {
   return state;
 }
 
+function evidenceFixture() {
+  const state = fixture();
+  state.evidences.push({ evidence_id: 'E_TEST_003', title: '共享来源证据', excerpt: '共享来源的另一条可核验摘录。', status: 'draft' });
+  state.chunks = [
+    { chunk_id: 'C_TEST_001', content: '第一段完整原文。', document_name: '操作说明', source: 'ragflow' },
+    { chunk_id: 'C_TEST_002', content: '第二段共享原文。', document_name: '操作说明', source: 'ragflow' },
+    { chunk_id: 'C_TEST_003', content: '尚未关联证据的完整原文。', document_name: '补充说明', source: 'ragflow' },
+  ];
+  state.evidence_chunks = [
+    { evidence_id: 'E_TEST_001', chunk_ids: ['C_TEST_001', 'C_TEST_002'] },
+    { evidence_id: 'E_TEST_002', chunk_ids: [] },
+    { evidence_id: 'E_TEST_003', chunk_ids: ['C_TEST_002'] },
+  ];
+  return state;
+}
+
 async function openApp(hash, serverState = fixture(), options = {}) {
   const calls = [];
   const listeners = new Map();
@@ -47,6 +63,20 @@ async function openApp(hash, serverState = fixture(), options = {}) {
   const testApi = {
     ApiError: class extends Error {},
     async getState() { return structuredClone(serverState); },
+    async getEvidenceInventory() { return { inventory: evidenceInventory(serverState) }; },
+    async linkEvidenceChunks(evidenceId, chunkIds, chunks = []) {
+      calls.push({ type: 'evidence-chunks', evidenceId, chunkIds: [...chunkIds] });
+      if (options.rejectEvidenceChunks) throw new Error('Evidence Chunk save failed');
+      for (const chunk of chunks) upsertEntity(serverState, 'chunks', chunk);
+      applyEvidenceChunks(serverState, evidenceId, chunkIds);
+      return { state: structuredClone(serverState) };
+    },
+    async createEvidence(body) {
+      calls.push({ type: 'create-evidence', body: structuredClone(body) });
+      if (options.rejectCreateEvidence) throw new Error('Evidence save failed');
+      const result = createEvidence(serverState, body);
+      return { ...structuredClone(result), state: structuredClone(serverState) };
+    },
     async manageQueryFacts(queryId, facts, factStatuses = []) {
       calls.push({ type: 'query-facts', queryId, facts: structuredClone(facts), factStatuses: structuredClone(factStatuses) });
       if (options.rejectQueryFacts) throw new Error('Query facts save failed');
@@ -69,7 +99,7 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     },
     async searchRagflow(body) {
       calls.push({ type: 'search', body: structuredClone(body) });
-      return { chunks: [] };
+      return { chunks: structuredClone(options.searchChunks || []) };
     },
   };
   const context = vm.createContext({
@@ -91,6 +121,7 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     calls, serverState,
     get hash() { return currentHash; },
     get html() { return nodes.get('#view').innerHTML; },
+    get modalHtml() { return nodes.get('#modal-root').innerHTML; },
     async click(action, dataset = {}) {
       const element = { dataset: { action, ...dataset }, tagName: 'BUTTON', classList: { contains: () => false } };
       await listeners.get('click')({ target: { closest: () => element }, preventDefault() {}, stopPropagation() {} });
@@ -99,6 +130,12 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     async change(action, id, value) {
       const element = { dataset: { action, id }, tagName: 'SELECT', value };
       listeners.get('change')({ target: { closest: () => element } });
+      await new Promise(setImmediate);
+    },
+    async input(bind, value) {
+      const element = { dataset: { bind }, tagName: 'INPUT', value };
+      element.closest = () => element;
+      listeners.get('input')({ target: element });
       await new Promise(setImmediate);
     },
   };
@@ -389,4 +426,178 @@ test('Query save and next advances Queries after persisting their Fact rules', a
   assert.equal(app.calls[0].facts.some((link) => link.fact_id === 'F_TEST_240'), true);
   assert.match(app.hash, /^#workbench\?query=Q_TEST_092/);
   assert.match(app.html, /提交后如何确认结果？/);
+});
+
+test('Evidence relationships open without a Query and prioritize missing sources', async () => {
+  const state = evidenceFixture();
+  state.queries = [];
+  state.query_facts = [];
+  const app = await openApp('#evidence', state);
+  assert.match(app.html, /从 Evidence 处理/);
+  assert.match(app.html, /从 Chunk 处理/);
+  assert.match(app.html, /data-workspace-evidence="E_TEST_002"/);
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  assert.match(app.html, /data-workspace-chunk="C_TEST_001"/);
+  assert.match(app.html, /第一段完整原文。/);
+  assert.deepEqual(app.calls, []);
+});
+
+test('Evidence additions preserve its existing sources and stay on the current Evidence', async () => {
+  const app = await openApp('#evidence', evidenceFixture());
+  await app.click('select-workspace-item', { id: 'E_TEST_001' });
+  await app.click('toggle-evidence-candidate', { id: 'C_TEST_003' });
+  await app.click('link-selected-evidence-chunks');
+  assert.deepEqual(app.calls, [{ type: 'evidence-chunks', evidenceId: 'E_TEST_001', chunkIds: ['C_TEST_001', 'C_TEST_002', 'C_TEST_003'] }]);
+  assert.match(app.html, /data-workspace-evidence="E_TEST_001"/);
+  assert.match(app.html, /data-linked-chunk="C_TEST_003"/);
+});
+
+test('switching Evidence or direction cannot carry pending sources into another item', async () => {
+  const app = await openApp('#evidence', evidenceFixture());
+  await app.click('toggle-evidence-candidate', { id: 'C_TEST_003' });
+  await app.click('select-workspace-item', { id: 'E_TEST_001' });
+  await app.click('link-selected-evidence-chunks');
+  await app.click('toggle-evidence-candidate', { id: 'C_TEST_003' });
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  await app.click('set-workspace-direction', { direction: 'evidence' });
+  await app.click('link-selected-evidence-chunks');
+  assert.deepEqual(app.calls, []);
+});
+
+test('unlinking a shared Chunk removes only the selected Evidence relationship', async () => {
+  const app = await openApp('#evidence', evidenceFixture());
+  const originalChunks = structuredClone(app.serverState.chunks);
+  const originalFacts = structuredClone(app.serverState.fact_evidence);
+  await app.click('select-workspace-item', { id: 'E_TEST_001' });
+  await app.click('unlink-workspace-chunk', { evidence: 'E_TEST_001', chunk: 'C_TEST_002' });
+  assert.deepEqual(app.serverState.evidence_chunks.find(row => row.evidence_id === 'E_TEST_001').chunk_ids, ['C_TEST_001']);
+  assert.deepEqual(app.serverState.evidence_chunks.find(row => row.evidence_id === 'E_TEST_003').chunk_ids, ['C_TEST_002']);
+  assert.deepEqual(app.serverState.chunks, originalChunks);
+  assert.deepEqual(app.serverState.fact_evidence, originalFacts);
+  assert.match(app.html, /data-workspace-evidence="E_TEST_001"/);
+});
+
+test('a failed source save preserves the selection for retry without advancing', async () => {
+  const app = await openApp('#evidence', evidenceFixture(), { rejectEvidenceChunks: true });
+  await app.click('toggle-evidence-candidate', { id: 'C_TEST_003' });
+  await app.click('link-selected-evidence-chunks');
+  await app.click('link-selected-evidence-chunks');
+  assert.equal(app.calls.length, 2);
+  assert.deepEqual(app.calls[0], app.calls[1]);
+  assert.equal(app.calls[0].evidenceId, 'E_TEST_002');
+  assert.deepEqual(app.calls[0].chunkIds, ['C_TEST_003']);
+  assert.deepEqual(app.serverState.evidence_chunks.find(row => row.evidence_id === 'E_TEST_002').chunk_ids, []);
+  assert.match(app.html, /data-workspace-evidence="E_TEST_002"/);
+});
+
+test('Chunk processing exposes shared references and appends to an existing Evidence', async () => {
+  const app = await openApp('#evidence', evidenceFixture());
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  await app.click('select-workspace-item', { id: 'C_TEST_002' });
+  assert.match(app.html, /引用此 Chunk 的 Evidence · 2/);
+  await app.click('select-workspace-item', { id: 'C_TEST_003' });
+  await app.input('workspace-target-evidence', 'E_TEST_001');
+  await app.click('bind-workspace-chunk');
+  assert.deepEqual(app.calls, [{ type: 'evidence-chunks', evidenceId: 'E_TEST_001', chunkIds: ['C_TEST_001', 'C_TEST_002', 'C_TEST_003'] }]);
+  assert.match(app.html, /data-workspace-chunk="C_TEST_003"/);
+});
+
+test('Chunk navigation clears its pending target and keeps every snapshot Chunk available', async () => {
+  const state = evidenceFixture();
+  state.evidence_chunks.find(row => row.evidence_id === 'E_TEST_002').chunk_ids = ['C_TEST_003'];
+  const app = await openApp('#evidence', state);
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  assert.match(app.html, /Chunk 队列 · 3/);
+  await app.input('workspace-target-evidence', 'E_TEST_003');
+  await app.click('next-workspace-item');
+  assert.match(app.html, /data-workspace-chunk="C_TEST_002"/);
+  await app.click('bind-workspace-chunk');
+  assert.deepEqual(app.calls, []);
+  await app.click('prev-workspace-item');
+  assert.match(app.html, /data-workspace-chunk="C_TEST_001"/);
+});
+
+test('a Chunk can create an independent Evidence without any Query or Fact', async () => {
+  const state = evidenceFixture();
+  state.queries = [];
+  state.query_facts = [];
+  state.facts = [];
+  state.fact_evidence = [];
+  const app = await openApp('#evidence', state);
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  await app.click('select-workspace-item', { id: 'C_TEST_003' });
+  await app.click('create-evidence-from-workspace-chunk');
+  await app.input('evidence-draft-title', '独立创建的证据');
+  await app.input('evidence-draft-excerpt', '尚未关联证据的完整原文。');
+  await app.click('save-evidence-draft');
+  const saved = app.serverState.evidences.find(row => row.title === '独立创建的证据');
+  assert.ok(saved);
+  assert.equal(saved.status, 'draft');
+  assert.deepEqual(app.serverState.evidence_chunks.find(row => row.evidence_id === saved.evidence_id).chunk_ids, ['C_TEST_003']);
+  assert.deepEqual(app.serverState.fact_evidence, []);
+  assert.equal(app.calls[0].body.fact_id, undefined);
+  assert.match(app.html, /data-workspace-chunk="C_TEST_003"/);
+  assert.equal(app.modalHtml, '');
+});
+
+test('failed Evidence creation retains editable draft content and source for retry', async () => {
+  const app = await openApp('#evidence', evidenceFixture(), { rejectCreateEvidence: true });
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  await app.click('select-workspace-item', { id: 'C_TEST_003' });
+  await app.click('create-evidence-from-workspace-chunk');
+  await app.input('evidence-draft-title', '失败后保留的证据标题');
+  await app.input('evidence-draft-excerpt', '失败后保留的原文摘录。');
+  await app.click('save-evidence-draft');
+  await app.click('save-evidence-draft');
+  assert.equal(app.calls.length, 2);
+  assert.deepEqual(app.calls[0], app.calls[1]);
+  assert.equal(app.calls[0].body.title, '失败后保留的证据标题');
+  assert.equal(app.calls[0].body.excerpt, '失败后保留的原文摘录。');
+  assert.deepEqual(app.calls[0].body.chunk_ids, ['C_TEST_003']);
+  assert.notEqual(app.modalHtml, '');
+  assert.match(app.html, /data-workspace-chunk="C_TEST_003"/);
+});
+
+test('an Evidence route selects that Evidence and retains its return context', async () => {
+  const app = await openApp('#evidence?evidence=E_TEST_003&fact=F_TEST_027&returnTo=fact-review', evidenceFixture());
+  assert.match(app.html, /data-workspace-evidence="E_TEST_003"/);
+  await app.click('return-from-evidence');
+  assert.match(app.hash, /^#fact-review\?/);
+  assert.match(app.hash, /fact=F_TEST_027/);
+});
+
+test('an empty library can retrieve a new raw Chunk and create its first Evidence', async () => {
+  const state = emptyState('test');
+  state.config = { ragflow: { configured: true, datasets: [{ id: 'ds-test', name: '测试数据集' }] } };
+  const remote = { chunk_id: 'C_REMOTE_001', content: '新检索到的完整原始片段。', document_name: '上游说明书', dataset_id: 'ds-test', source: 'ragflow' };
+  const app = await openApp('#evidence', state, { searchChunks: [remote] });
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  assert.match(app.html, /data-action="toggle-workspace-retrieval"/);
+  await app.input('evidence-keyword', '说明书');
+  await app.click('search-evidence-keywords');
+  await app.click('select-workspace-item', { id: 'C_REMOTE_001' });
+  assert.match(app.html, /data-workspace-chunk="C_REMOTE_001"/);
+  assert.match(app.html, /新检索到的完整原始片段。/);
+  await app.click('create-evidence-from-workspace-chunk');
+  await app.input('evidence-draft-title', '第一条独立证据');
+  await app.input('evidence-draft-excerpt', '新检索到的完整原始片段。');
+  await app.click('save-evidence-draft');
+  assert.equal(app.serverState.evidences.length, 1);
+  assert.equal(app.serverState.chunks[0].chunk_id, 'C_REMOTE_001');
+  assert.equal(app.serverState.chunks[0].content, remote.content);
+  assert.deepEqual(app.serverState.evidence_chunks[0].chunk_ids, ['C_REMOTE_001']);
+  assert.deepEqual(app.serverState.fact_evidence, []);
+});
+
+test('changing a relation filter selects a matching item and saving keeps that item visible', async () => {
+  const app = await openApp('#evidence', evidenceFixture());
+  await app.change('set-workspace-filter', '', 'linked');
+  assert.match(app.html, /data-workspace-evidence="E_TEST_001"/);
+  await app.change('set-workspace-filter', '', 'missing');
+  assert.match(app.html, /data-workspace-evidence="E_TEST_002"/);
+  await app.click('toggle-evidence-candidate', { id: 'C_TEST_003' });
+  await app.click('link-selected-evidence-chunks');
+  assert.match(app.html, /data-workspace-evidence="E_TEST_002"/);
+  assert.match(app.html, /当前项已不在筛选结果中，仍可继续编辑/);
+  assert.match(app.html, /data-linked-chunk="C_TEST_003"/);
 });
