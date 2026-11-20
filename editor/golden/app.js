@@ -1633,6 +1633,7 @@ function renderEvidenceCandidate(row) {
         <div class="candidate-foot">
           ${documentName ? `<span>${icon('doc')} ${esc(documentName)}</span><span>${esc(pageLabel(page))}</span>` : '<span class="faint">尚未绑定来源 Chunk</span>'}
           <span class="spacer"></span>
+          <button class="icon-btn link-danger" data-action="delete-evidence" data-id="${attr(row.evidence_id)}" type="button" aria-label="删除 ${attr(row.evidence_id)}" title="删除 ${attr(row.evidence_id)}">${icon('trash')}</button>
           ${chunkIds.slice(0, 3).map((chunkId) => `<button class="chunk-ref" data-action="preview-chunk" data-id="${attr(chunkId)}" type="button" title="预览 ${attr(chunkId)}">${esc(chunkId)}</button>`).join('')}
           ${chunkIds.length > 3 ? `<span class="chip plain">+${chunkIds.length - 3}</span>` : ''}
         </div>
