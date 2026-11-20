@@ -12,6 +12,7 @@ const STATUS_LABELS = {
   review: '待复核',
   approved: '已确认',
 };
+const CLAIM_STORAGE_KEY = 'rag-eval-dataset.golden.reviewer';
 const BEHAVIOR_LABELS = {
   answer: '应回答',
   refuse: '应拒答',
@@ -47,6 +48,8 @@ const ICONS = {
   arrowDown: '<path d="M12 4v16M6 14l6 6 6-6"/>',
   chunk: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  user: '<circle cx="12" cy="8" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
 };
 
 const app = document.querySelector('.app-shell');
@@ -77,6 +80,8 @@ const ui = {
   relationOperator: 'OR',
   querySearch: '',
   queryStatus: '',
+  queryClaimFilter: '',
+  reviewerName: '',
   queryReview: null,
   factSearch: '',
   overviewSearch: '',
@@ -93,6 +98,38 @@ const ui = {
 
 let toastSequence = 0;
 let candidateSequence = 0;
+
+try {
+  ui.reviewerName = localStorage.getItem(CLAIM_STORAGE_KEY) || '';
+} catch {
+  ui.reviewerName = '';
+}
+
+function queryClaim(queryId) {
+  return (ui.data?.query_claims || []).find((claim) => claim.subject_id === queryId && claim.active);
+}
+
+function setReviewerName(name) {
+  ui.reviewerName = text(name).slice(0, 40);
+  try {
+    if (ui.reviewerName) localStorage.setItem(CLAIM_STORAGE_KEY, ui.reviewerName);
+    else localStorage.removeItem(CLAIM_STORAGE_KEY);
+  } catch {
+  }
+}
+
+function requireReviewerName() {
+  return promptReviewerName('');
+}
+
+function promptReviewerName(message) {
+  setModal({
+    type: 'reviewer-name',
+    value: '',
+    error: message || '请先填写你的显示名，其他人会据此看到领取状态。',
+  });
+  return '';
+}
 
 function emptyBuilder(overrides = {}) {
   return {
@@ -2103,9 +2140,25 @@ function filteredQueryGroups() {
     const variants = all.filter((row) => row.parent_query_id === rootId);
     const visible = [root, ...variants].filter((row) => row
       && (!ui.queryStatus || row.status === ui.queryStatus)
+      && (!ui.queryClaimFilter || queryClaimFilterMatches(queryClaim(row.query_id)))
       && queryMatchesSearch(row));
     return { root, variants, visible };
   }).filter((group) => group.visible.length);
+}
+
+function queryClaimFilterMatches(claim) {
+  if (ui.queryClaimFilter === 'mine') return Boolean(claim && claim.owner === ui.reviewerName);
+  if (ui.queryClaimFilter === 'others') return Boolean(claim && claim.owner !== ui.reviewerName);
+  return !claim;
+}
+
+function queryClaimChip(row) {
+  const claim = queryClaim(row.query_id);
+  if (!claim) return '<span class="chip plain">未领取</span>';
+  const mine = claim.owner === ui.reviewerName;
+  const action = mine ? 'release-query-claim' : 'renew-query-claim';
+  const title = mine ? '点击释放领取' : '点击尝试续期';
+  return `<button class="chip chip-button ${mine ? 'claim-mine' : 'claim-other'}" data-action="${action}" data-id="${attr(row.query_id)}" type="button" title="${title}" aria-label="${title}">${icon('lock')} ${esc(claim.owner)}</button>`;
 }
 
 function queryListRow(row, depth = 0) {
@@ -2122,6 +2175,7 @@ function queryListRow(row, depth = 0) {
       </td>
       <td>${variantChip(row.variant_type)}</td>
       <td>${statusChip(row.status)}</td>
+      <td>${queryClaimChip(row)}</td>
       <td>${esc(BEHAVIOR_LABELS[row.expected_behavior] || row.expected_behavior)}</td>
       <td>${links.length} Facts <span class="tiny muted">/${counts.requiredGroups} 必需组 · ${counts.requiredSingles} 单项 · ${counts.alternatives} 任选组 · ${counts.conditions} 条件</span></td>
       <td class="hide-sm">${esc(compactExcerpt(row.notes, 50) || '—')}</td>
@@ -2129,6 +2183,7 @@ function queryListRow(row, depth = 0) {
         <div class="table-actions">
           <button class="icon-btn" data-action="open-query" data-id="${attr(row.query_id)}" type="button" title="打开审核">${icon('eye')}</button>
           <button class="icon-btn" data-action="edit-query" data-id="${attr(row.query_id)}" type="button" title="编辑">${icon('edit')}</button>
+          <button class="icon-btn" data-action="claim-query" data-id="${attr(row.query_id)}" type="button" title="领取">${icon('lock')}</button>
           <button class="icon-btn" data-action="approve-query" data-id="${attr(row.query_id)}" data-advance="false" type="button" title="确认" ${row.status === 'approved' ? 'disabled' : ''}>${icon('check')}</button>
           <button class="icon-btn link-danger" data-action="delete-query" data-id="${attr(row.query_id)}" type="button" title="删除">${icon('trash')}</button>
         </div>
@@ -2144,9 +2199,10 @@ function renderQueryList() {
       <div class="screen-head">
         <div>
           <h1>Query 清单</h1>
-          <p>按主问分组查看同义句和口语化变体。打开任一条进入证据工作台，确认前会保留待复核状态。</p>
+          <p>按主问分组查看同义句和口语化变体。领取只用于分工避重，过期后可被他人领取。</p>
         </div>
         <div class="head-actions">
+          <button class="btn btn-outline" data-action="show-reviewer-name" type="button">${icon('user')} ${ui.reviewerName ? esc(ui.reviewerName) : '设置显示名'}</button>
           <button class="btn btn-primary" data-action="navigate" data-screen="builder" type="button">${icon('plus')} 构造 Query</button>
         </div>
       </div>
@@ -2161,6 +2217,12 @@ function renderQueryList() {
             <option value="">全部状态</option>
             ${Object.entries(STATUS_LABELS).map(([value, label]) => `<option value="${value}" ${ui.queryStatus === value ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
+          <select class="select" data-action="filter-query-claim" aria-label="领取状态">
+            <option value="">全部领取</option>
+            <option value="free" ${ui.queryClaimFilter === 'free' ? 'selected' : ''}>未领取</option>
+            <option value="mine" ${ui.queryClaimFilter === 'mine' ? 'selected' : ''}>我领取的</option>
+            <option value="others" ${ui.queryClaimFilter === 'others' ? 'selected' : ''}>他人领取</option>
+          </select>
           <span class="spacer"></span>
           <span class="tiny muted">显示 ${visibleCount} / ${rows('queries').length} 条</span>
         </div>
@@ -2172,6 +2234,7 @@ function renderQueryList() {
                   <th>Query</th>
                   <th>类型</th>
                   <th>状态</th>
+                  <th>领取</th>
                   <th>期望行为</th>
                   <th>Fact 依赖</th>
                   <th class="hide-sm">备注</th>
@@ -3310,6 +3373,22 @@ LLM_MODEL=${esc(config.llm?.model || '<model>')}</div>
   });
 }
 
+function renderReviewerNameModal(modalState) {
+  return modalShell({
+    title: '设置显示名',
+    subtitle: '显示名保存在当前浏览器，只用于领取标记。',
+    body: `
+      ${modalState.error ? `<div class="readiness-box blocked"><div class="readiness-title">${icon('alert')} ${esc(modalState.error)}</div></div>` : ''}
+      <label class="field">
+        <span class="field-label">你的显示名</span>
+        <input class="input" id="reviewer-name-input" data-bind="reviewer-name" value="${attr(modalState.value || '')}" placeholder="例如：张三" maxlength="40" autocomplete="off">
+      </label>`,
+    footer: `
+      <button class="btn btn-ghost" data-action="close-modal" type="button">取消</button>
+      <button class="btn btn-primary" data-action="save-reviewer-name" type="button">${icon('check')} 保存</button>`,
+  });
+}
+
 function renderHelpModal() {
   return modalShell({
     title: '使用说明',
@@ -3340,6 +3419,7 @@ function renderModal() {
   else if (modalState.type === 'evidence-create') modalRoot.innerHTML = renderEvidenceCreateModal(modalState);
   else if (modalState.type === 'config') modalRoot.innerHTML = renderConfigModal();
   else if (modalState.type === 'help') modalRoot.innerHTML = renderHelpModal();
+  else if (modalState.type === 'reviewer-name') modalRoot.innerHTML = renderReviewerNameModal(modalState);
   else modalRoot.innerHTML = '';
 }
 
@@ -3401,6 +3481,57 @@ async function runMutation(task, { success = '', after = null } = {}) {
     toast(apiErrorText(error), 'error');
     render();
     return null;
+  }
+}
+
+async function runClaimMutation(task, successMessage) {
+  if (ui.busy) return null;
+  ui.busy = true;
+  try {
+    const result = await task();
+    await applyMutationResult(result);
+    toast(successMessage, 'success');
+    render();
+    return result;
+  } finally {
+    ui.busy = false;
+  }
+}
+
+async function claimQueryFromList(queryId) {
+  const owner = requireReviewerName();
+  if (!owner) return;
+  try {
+    await runClaimMutation(() => api.claimQuery(queryId, owner), `已领取 ${queryId}`);
+  } catch (error) {
+    if (error.status === 409) promptReviewerName(error.message || '这条 Query 已被领取。');
+    else toast(apiErrorText(error), 'error');
+  }
+}
+
+async function renewQueryClaimFromList(queryId) {
+  const owner = text(ui.reviewerName);
+  if (!owner) {
+    promptReviewerName('请先填写显示名。');
+    return;
+  }
+  try {
+    await runClaimMutation(() => api.renewQueryClaim(queryId, owner), '领取已续期 30 分钟');
+  } catch (error) {
+    toast(apiErrorText(error), 'error');
+  }
+}
+
+async function releaseQueryClaimFromList(queryId) {
+  const owner = text(ui.reviewerName);
+  if (!owner) {
+    promptReviewerName('请先填写显示名。');
+    return;
+  }
+  try {
+    await runClaimMutation(() => api.releaseQueryClaim(queryId, owner), '已释放领取');
+  } catch (error) {
+    toast(apiErrorText(error), 'error');
   }
 }
 
@@ -4289,6 +4420,7 @@ function updateBoundValue(bind, element) {
     if (bind === 'query-edit-text') ui.modal.draft.text = value;
     else if (bind === 'query-edit-behavior') ui.modal.draft.expected_behavior = value;
     else if (bind === 'query-edit-status') ui.modal.draft.status = value;
+    else if (bind === 'reviewer-name' && ui.modal?.type === 'reviewer-name') ui.modal.value = value;
     else if (bind === 'query-edit-notes') ui.modal.draft.notes = value;
     else return false;
     return true;
@@ -4340,6 +4472,9 @@ function handleChange(event) {
     render();
   } else if (action === 'filter-query-status') {
     ui.queryStatus = element.value;
+    render();
+  } else if (action === 'filter-query-claim') {
+    ui.queryClaimFilter = element.value;
     render();
   } else if (action === 'change-top-k') {
     ui.topK = Number(element.value) || 12;
@@ -4709,6 +4844,26 @@ async function dispatchClickAction(action, element) {
     render();
   } else if (action === 'show-config') {
     setModal({ type: 'config' });
+  } else if (action === 'show-reviewer-name') {
+    promptReviewerName('');
+  } else if (action === 'save-reviewer-name') {
+    const name = text(ui.modal?.value);
+    if (!name) {
+      ui.modal.error = '显示名不能为空。';
+      renderModal();
+      return;
+    }
+    setReviewerName(name);
+    ui.modal = null;
+    renderModal();
+    render();
+    toast(`显示名已设为 ${name}`, 'success');
+  } else if (action === 'claim-query') {
+    await claimQueryFromList(element.dataset.id || '');
+  } else if (action === 'release-query-claim') {
+    await releaseQueryClaimFromList(element.dataset.id || '');
+  } else if (action === 'renew-query-claim') {
+    await renewQueryClaimFromList(element.dataset.id || '');
   } else if (action === 'show-help') {
     setModal({ type: 'help' });
   } else if (action === 'close-modal') {
@@ -4733,6 +4888,7 @@ async function handleClick(event) {
     return;
   }
   if (action === 'set-chunk-available' || action === 'set-chunk-unavailable') event.stopPropagation();
+  if (action === 'claim-query' || action === 'release-query-claim' || action === 'renew-query-claim') event.stopPropagation();
   if (element.tagName === 'A') event.preventDefault();
   try {
     await dispatchClickAction(action, element);

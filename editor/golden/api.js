@@ -45,6 +45,18 @@ export function getEvidenceInventory() {
   return request('/api/golden/evidence/inventory');
 }
 
+export function claimQuery(queryId, owner, ttlSeconds = 1800) {
+  return post('/api/golden/query-claims/claim', { query_id: queryId, owner, ttl_seconds: ttlSeconds });
+}
+
+export function renewQueryClaim(queryId, owner, ttlSeconds = 1800) {
+  return post('/api/golden/query-claims/renew', { query_id: queryId, owner, ttl_seconds: ttlSeconds });
+}
+
+export function releaseQueryClaim(queryId, owner) {
+  return post('/api/golden/query-claims/release', { query_id: queryId, owner });
+}
+
 export function autoMatchEvidence(body) {
   return post('/api/golden/evidence/auto-match', body);
 }

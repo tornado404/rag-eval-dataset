@@ -639,6 +639,25 @@ textarea::placeholder {
   font-weight: 500;
 }
 
+.chip-button {
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.chip-button:hover {
+  border-color: var(--line-strong);
+}
+
+.chip.claim-mine {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.chip.claim-other {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
 .field {
   display: flex;
   flex-direction: column;
