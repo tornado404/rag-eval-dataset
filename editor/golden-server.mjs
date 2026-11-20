@@ -1,7 +1,7 @@
-[REDACTED]
+import fs from 'node:fs';
 import http from 'node:http';
-[REDACTED]
-[REDACTED]
+import os from 'node:os';
+import path from 'node:path';
 import { REPO_ROOT } from '../scripts/lib/dataset.mjs';
 import {
   GOLDEN_VERSION,
@@ -75,8 +75,8 @@ function parseEnvFile(file) {
     if (index < 1) continue;
     const key = trimmed.slice(0, index).trim();
     let value = trimmed.slice(index + 1).trim();
-    [REDACTED]
-      [REDACTED]
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
     }
     out[key] = value;
   }
@@ -94,7 +94,7 @@ function loadConfig() {
       if (!item) return null;
       const index = item.indexOf(':');
       return index > 0 ? { id: item.slice(0, index).trim(), name: item.slice(index + 1).trim() } : { id: item, name: item };
-    })[REDACTED]
+    }).filter(Boolean)
     : [];
   return {
     configFile: file,
@@ -546,11 +546,18 @@ async function handle(req, res, url) {
 
   if (req.method === 'POST' && url.pathname === '/api/golden/links/evidence-chunks') {
     const body = await safeBody(req);
-    const result = mutate(VERSION, (state) => applyEvidenceChunks(
-      state,
-      String(body.evidence_id || ''),
-      body.chunk_ids || [],
-    ));
+    const result = mutate(VERSION, (state) => {
+      for (const chunk of Array.isArray(body.chunks) ? body.chunks : []) {
+        const chunkId = firstString(chunk, ['chunk_id', 'id']);
+        if (!chunkId || state.chunks.some((row) => row.chunk_id === chunkId)) continue;
+        upsertEntity(state, 'chunks', { ...chunk, chunk_id: chunkId });
+      }
+      return applyEvidenceChunks(
+        state,
+        String(body.evidence_id || ''),
+        body.chunk_ids || [],
+      );
+    });
     return send(res, 200, { link: result, state: stateBundle() });
   }
 

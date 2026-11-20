@@ -1,6 +1,6 @@
-[REDACTED]
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 const ROOT = path.resolve(import.meta.dirname, '..');
 const FIELDS = ['answer_text', 'expected_behavior', 'required_fact_ids', 'forbidden_fact_ids', 'rubric', 'status', 'reviewer'];
 const PATCH_COPY = /previous(?:\s*\[[^\]]+\]|\.\w+)\s*=\s*patch(?:\s*\[[^\]]+\]|\.\w+)/g;
@@ -29,7 +29,7 @@ function bodyOf(text, open) {
   }
   return '';
 }
-const tracked = git(['ls-files', '-z']).split('\0')[REDACTED];
+const tracked = git(['ls-files', '-z']).split('\0').filter(Boolean);
 const contents = new Map(tracked.map((file) => [file, read(file)]));
 const manifestSource = contents.get('MANIFEST.json');
 const parsedManifest = manifestSource ? parseJson(manifestSource) : { error: 'missing' };
@@ -89,8 +89,8 @@ const RULES = [
       const errors = [];
       if (!context.rootManifest) return [diag(this.id, 'MANIFEST.json', 1, 'must be valid JSON')];
       const versions = Array.isArray(context.rootManifest.versions) ? context.rootManifest.versions : [];
-      const listed = versions.map((version) => version?.id)[REDACTED];
-      const trackedVersions = new Set(tracked.map((file) => file.match(/^datasets\/(v[^/]+)\//)?.[1])[REDACTED]);
+      const listed = versions.map((version) => version?.id).filter(Boolean);
+      const trackedVersions = new Set(tracked.map((file) => file.match(/^datasets\/(v[^/]+)\//)?.[1]).filter(Boolean));
       for (const version of trackedVersions) {
         if (!listed.includes(version)) errors.push(diag(this.id, 'MANIFEST.json', 1, `versions missing tracked dataset directory ${version}`));
       }
@@ -117,8 +117,8 @@ const RULES = [
       const errors = [];
       try {
         const baseline = runGit(['rev-parse', '--verify', `${ref}^{commit}`]).trim();
-        const frozen = new Set(runGit(['ls-tree', '-r', '-z', '--name-only', baseline, '--', 'datasets']).split('\0').map((file) => file.match(/^datasets\/(v[^/]+)\//)?.[1])[REDACTED]);
-        const commits = runGit(['log', '--format=%H', `${baseline}..HEAD`]).split('\n').map((value) => value.trim())[REDACTED];
+        const frozen = new Set(runGit(['ls-tree', '-r', '-z', '--name-only', baseline, '--', 'datasets']).split('\0').map((file) => file.match(/^datasets\/(v[^/]+)\//)?.[1]).filter(Boolean));
+        const commits = runGit(['log', '--format=%H', `${baseline}..HEAD`]).split('\n').map((value) => value.trim()).filter(Boolean);
         for (const commit of commits) {
           const changed = runGit(['diff-tree', '--no-commit-id', '--name-only', '-r', '-m', '-z', commit, '--', 'datasets']).split('\0');
           for (const file of changed) {
@@ -160,7 +160,7 @@ const RULES = [
       const declaration = /\bconst\s+EDITABLE_FIELDS\s*=\s*\[([\s\S]*?)\]\s*;/.exec(source);
       if (!declaration) return [diag(this.id, 'editor/server.mjs', 1, 'EDITABLE_FIELDS must be a const array')];
       const errors = [];
-      const fields = declaration[1].split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, ''))[REDACTED];
+      const fields = declaration[1].split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
       if (fields.length !== FIELDS.length || fields.some((field) => !FIELDS.includes(field))) {
         errors.push(diag(this.id, 'editor/server.mjs', at(source, declaration.index), `EDITABLE_FIELDS must be exactly ${FIELDS.join(', ')}`));
       }

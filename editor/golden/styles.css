@@ -664,6 +664,10 @@ textarea::placeholder {
   gap: 6px;
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field > label,
 .field-label {
   color: var(--text-2);
@@ -2337,6 +2341,150 @@ textarea::placeholder {
   flex: none;
 }
 
+.evidence-repair-panel {
+  flex: none;
+  overflow: hidden;
+}
+
+.evidence-repair-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px 10px;
+}
+
+.evidence-repair-head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.evidence-repair-head p {
+  margin: 5px 0 0;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.evidence-repair-tabs {
+  display: flex;
+  gap: 5px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.evidence-repair-tabs .tab {
+  height: 32px;
+  font-size: 11px;
+}
+
+.evidence-repair-tabs .tab-count {
+  margin-left: 4px;
+}
+
+.evidence-repair-list {
+  max-height: 300px;
+  overflow: auto;
+  padding: 4px 16px 12px;
+}
+
+.repair-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.repair-row:last-child {
+  border-bottom: 0;
+}
+
+.repair-row.selected {
+  margin: 0 -8px;
+  padding-right: 8px;
+  padding-left: 8px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+}
+
+.repair-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.repair-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.repair-row-title strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.repair-row-main p {
+  margin: 5px 0 3px;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.repair-row-main small {
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.repair-chunk-row .check {
+  flex: none;
+}
+
+.evidence-repair-actions {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 12px 0 2px;
+}
+
+.repair-link-target {
+  display: grid;
+  gap: 5px;
+  min-width: 220px;
+  margin-left: auto;
+}
+
+.repair-target-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f9fc;
+}
+
+.repair-target-banner div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.repair-target-banner strong {
+  font-size: 11px;
+}
+
+.repair-target-banner span {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .evidence-grid {
   display: grid;
   flex: 1;
@@ -3743,6 +3891,29 @@ textarea::placeholder {
 
   .evidence-grid {
     grid-template-columns: 1fr;
+  }
+
+  .evidence-repair-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .repair-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .repair-row .btn {
+    margin-left: auto;
+  }
+
+  .repair-link-target {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .evidence-repair-actions > .tiny {
+    width: 100%;
   }
 
   .evidence-draft-grid {

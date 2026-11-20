@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import { datasetDir, loadDataset, loadExpectedActionMap, validateExpectedActionMap } from '../scripts/lib/dataset.mjs';
 import {
@@ -21,25 +21,25 @@ function actionMapFixture() {
     ],
     expected_outputs: [
       { case_id: 'CASE-001', expected_behavior: 'answer' },
-      { case_id: 'CASE-002', expected_behavior: '[REDACTED]' },
-      { case_id: 'CASE-003', expected_behavior: 'refuse_or_[REDACTED]' },
+      { case_id: 'CASE-002', expected_behavior: 'refuse_compliance' },
+      { case_id: 'CASE-003', expected_behavior: 'refuse_or_insufficient_evidence' },
     ],
   };
   const actionMap = {
-    schema_version: '[REDACTED]',
+    schema_version: 'expected-actions/v1',
     dataset_version: 'v1.5',
     provisional: true,
     behavior_rules: {
       answer: 'answer',
       clarify: 'clarify',
-      [REDACTED]: '[REDACTED]',
+      refuse_compliance: 'compliance_block',
       escalate_human: 'escalate_human',
-      [REDACTED]: '[REDACTED]',
+      insufficient_evidence: 'insufficient_evidence',
     },
     unscored_case_ids: ['CASE-003'],
     cases: {
       'CASE-001': { scoreable: true, expected_action: 'answer' },
-      'CASE-002': { scoreable: true, expected_action: '[REDACTED]' },
+      'CASE-002': { scoreable: true, expected_action: 'compliance_block' },
       'CASE-003': { scoreable: false, expected_action: null },
     },
   };
@@ -48,7 +48,7 @@ function actionMapFixture() {
 
 test('expected-action map validates synthetic scoreable and unscored cases', () => {
   const { data, actionMap } = actionMapFixture();
-  assert.equal(actionMap.schema_version, '[REDACTED]');
+  assert.equal(actionMap.schema_version, 'expected-actions/v1');
   assert.equal(actionMap.dataset_version, 'v1.5');
   assert.equal(actionMap.provisional, true);
   assert.deepEqual(validateExpectedActionMap(data, actionMap), []);
@@ -56,9 +56,9 @@ test('expected-action map validates synthetic scoreable and unscored cases', () 
 
 test('expected-action validation rejects a wrong compliance mapping', () => {
   const { data, actionMap } = actionMapFixture();
-  actionMap.behavior_rules.[REDACTED] = 'refuse_domain';
+  actionMap.behavior_rules.refuse_compliance = 'refuse_domain';
   const errors = validateExpectedActionMap(data, actionMap);
-  assert.ok(errors.some((error) => error.includes('[REDACTED]')));
+  assert.ok(errors.some((error) => error.includes('refuse_compliance')));
 });
 
 test('AI QA evaluation ignores maxCases and keeps the full Decision cohort', () => {
@@ -79,7 +79,7 @@ test('AI QA evaluation ignores maxCases and keeps the full Decision cohort', () 
 const hasPrivateV15 = fs.existsSync(path.join(datasetDir('v1.5'), 'cases.jsonl'));
 test('AI QA progress events include API, decision, and observation counters', { skip: !hasPrivateV15 }, async () => {
   const { runEvaluation } = await import('../editor/evaluator.mjs');
-  [REDACTED]
+  const dataset = loadDataset('v1.5');
   const actionMap = loadExpectedActionMap('v1.5');
   const answerCount = dataset.cases.filter((row) => actionMap.cases[row.case_id]?.expected_action === 'answer').length;
   const events = [];

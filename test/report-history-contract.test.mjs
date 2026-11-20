@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-[REDACTED]
+import fs from 'node:fs';
 import test from 'node:test';
 
 const source = fs.readFileSync(new URL('../editor/index.html', import.meta.url), 'utf8');

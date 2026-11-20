@@ -1,10 +1,10 @@
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import { datasetDir, readJsonl } from './lib/dataset.mjs';
 
 function usage() {
   console.error('Usage: node scripts/compute_hit.mjs <details_mode_a.jsonl> [--top-k 12] [--out file.json]');
-  [REDACTED]
+  process.exit(2);
 }
 
 const detailPath = process.argv[2];
@@ -36,7 +36,7 @@ const macroRecall = answerRows.length
 const anyHit = answerRows.filter((row) => Number(row.required_covered || 0) > 0).length;
 const strictHit = answerRows.filter((row) => Number(row.required_covered || 0) === Number(row.required_total || 0)).length;
 
-[REDACTED]
+const summary = {
   top_k: topK,
   answer_cases: answerRows.length,
   macro_fact_recall: macroRecall === null ? null : Number(macroRecall.toFixed(6)),

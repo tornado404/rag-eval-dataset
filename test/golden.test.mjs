@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-[REDACTED]
-[REDACTED]
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import test from 'node:test';
 import {
   GoldenError,

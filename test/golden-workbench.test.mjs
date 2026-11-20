@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-[REDACTED]
+import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { applyFactEvidence, applyQueryFactManagement, emptyState, upsertEntity } from '../scripts/lib/golden.mjs';

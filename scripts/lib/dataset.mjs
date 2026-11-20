@@ -1,5 +1,5 @@
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 export const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
@@ -53,7 +53,7 @@ function directExpectedAction(behavior, rules) {
 
 export function validateExpectedActionMap(data, actionMap) {
   const errors = [];
-  if (actionMap.schema_version !== '[REDACTED]') {
+  if (actionMap.schema_version !== 'expected-actions/v1') {
     errors.push(`expected_actions: unsupported schema_version ${actionMap.schema_version}`);
   }
   if (actionMap.dataset_version !== 'v1.5') {
@@ -63,9 +63,9 @@ export function validateExpectedActionMap(data, actionMap) {
   const requiredRules = {
     answer: 'answer',
     clarify: 'clarify',
-    [REDACTED]: '[REDACTED]',
+    refuse_compliance: 'compliance_block',
     escalate_human: 'escalate_human',
-    [REDACTED]: '[REDACTED]',
+    insufficient_evidence: 'insufficient_evidence',
   };
   for (const [behavior, expectedAction] of Object.entries(requiredRules)) {
     if (rules[behavior] !== expectedAction) {
@@ -85,11 +85,11 @@ export function validateExpectedActionMap(data, actionMap) {
     const output = outputs.get(caseId);
     const behavior = output?.expected_behavior;
     const directAction = directExpectedAction(behavior, rules);
-    if (unscored.has(caseId) || behavior === 'refuse_or_[REDACTED]') {
+    if (unscored.has(caseId) || behavior === 'refuse_or_insufficient_evidence') {
       if (entry.scoreable || entry.expected_action !== null) {
         errors.push(`expected_actions: ${caseId} must stay unscored`);
       }
-      if (behavior === 'refuse_or_[REDACTED]' && !unscored.has(caseId)) {
+      if (behavior === 'refuse_or_insufficient_evidence' && !unscored.has(caseId)) {
         errors.push(`expected_actions: ${caseId} legacy label missing from unscored_case_ids`);
       }
       continue;

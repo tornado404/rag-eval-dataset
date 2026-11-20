@@ -1,16 +1,16 @@
-[REDACTED]
+import fs from 'node:fs';
 
 const baseUrl = String(process.env.RAGFLOW_BASE_URL || '').replace(/\/$/, '');
 const apiKey = String(process.env.RAGFLOW_API_KEY || '').trim();
 const datasetIds = String(process.env.RAGFLOW_DATASET_IDS || '')
   .split(/[\s,，]+/)
   .map((value) => value.trim())
-  [REDACTED];
+  .filter(Boolean);
 const output = process.argv[2] || '';
 
 if (!baseUrl || !apiKey || !datasetIds.length || !output) {
   console.error('usage: RAGFLOW_BASE_URL=... RAGFLOW_API_KEY=... RAGFLOW_DATASET_IDS=id1,id2 node scripts/dump_ragflow_chunks.mjs output.jsonl');
-  [REDACTED]
+  process.exit(2);
 }
 
 const PAGE_SIZE = 100;
@@ -24,7 +24,7 @@ async function request(path) {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(120_000),
       });
-      [REDACTED]
+      const text = await response.text();
       let payload;
       try {
         payload = JSON.parse(text);
@@ -105,4 +105,4 @@ for (const datasetId of datasetIds) {
   }
 }
 await new Promise((resolve, reject) => stream.end((error) => error ? reject(error) : resolve()));
-[REDACTED] output, datasets: datasetIds.length, chunks: total }));
+console.log(JSON.stringify({ output, datasets: datasetIds.length, chunks: total }));

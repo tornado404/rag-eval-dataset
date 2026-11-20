@@ -1,5 +1,5 @@
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import { datasetDir, readJsonl, writeJsonl } from './lib/dataset.mjs';
 
 const version = process.argv[2] || process.env.DATASET_VERSION || 'v1.5';
@@ -13,21 +13,21 @@ const behaviorLabels = {
   clarify: '追问澄清',
   refuse: '拒答（合规）',
   handoff: '转人工',
-  [REDACTED]: '证据不足',
+  insufficient_evidence: '证据不足',
 };
 const updatedAt = new Date().toISOString();
 
 const outputs = cases.map((item) => {
   const answerText = item.expected_behavior === 'answer'
-    ? (item.required_fact_ids || []).map((id) => factText.get(id))[REDACTED].join('；')
+    ? (item.required_fact_ids || []).map((id) => factText.get(id)).filter(Boolean).join('；')
     : `不直接作答。预期行为：${behaviorLabels[item.expected_behavior] || item.expected_behavior}`;
   return {
-    [REDACTED]
+    case_id: item.case_id,
     answer_text: answerText,
     expected_behavior: item.expected_behavior,
     required_fact_ids: item.required_fact_ids || [],
     forbidden_fact_ids: item.forbidden_fact_ids || [],
-    rubric: (item.required_fact_ids || []).map((id) => factText.get(id))[REDACTED],
+    rubric: (item.required_fact_ids || []).map((id) => factText.get(id)).filter(Boolean),
     status: 'draft',
     reviewer: '',
     updated_at: updatedAt,

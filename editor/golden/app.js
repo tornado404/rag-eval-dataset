@@ -165,6 +165,10 @@ function emptyEvidenceWorkspace(overrides = {}) {
     selectedChunkIds: new Set(),
     selectedChunks: new Map(),
     selectionOrder: [],
+    repairBucket: 'evidence',
+    repairChunkSelection: new Set(),
+    targetEvidenceId: '',
+    repairLinkTargetId: '',
     result: null,
     keywordLoading: false,
     expandedChunkId: '',
@@ -253,7 +257,7 @@ function selectedAutoMatchCandidates() {
   const workspace = ui.evidenceWorkspace;
   return workspace.selectionOrder
     .map((chunkId) => workspace.selectedChunks.get(chunkId))
-    [REDACTED];
+    .filter(Boolean);
 }
 
 function setEvidenceMode(mode) {
@@ -275,10 +279,11 @@ function rememberEvidenceCandidates(candidates) {
   }
 }
 
-function toggleEvidenceCandidate(chunkId) {
+function toggleEvidenceCandidate(chunkId, candidateOverride = null) {
   const workspace = ui.evidenceWorkspace;
   const candidate = workspace.candidates.find((item) => item.chunk_id === chunkId)
-    || workspace.selectedChunks.get(chunkId);
+    || workspace.selectedChunks.get(chunkId)
+    || candidateOverride;
   if (!candidate) return;
   if (workspace.selectedChunkIds.has(chunkId)) {
     workspace.selectedChunkIds.delete(chunkId);
@@ -322,7 +327,7 @@ async function searchEvidenceKeywords() {
     });
     const candidates = (Array.isArray(result?.chunks) ? result.chunks : [])
       .map(normalizeCandidate)
-      [REDACTED];
+      .filter(Boolean);
     workspace.keyword = keyword;
     workspace.candidates = candidates;
     workspace.candidatesByMode.keyword = candidates;
@@ -393,7 +398,7 @@ function text(value) {
 }
 
 function unique(values) {
-  return [...new Set(values.map(text)[REDACTED])];
+  return [...new Set(values.map(text).filter(Boolean))];
 }
 
 function normalizeText(value) {
@@ -457,7 +462,7 @@ function isScoringRequirement(requirement) {
 
 function queryFactRequirementCounts(links) {
   const requiredFacts = links.filter((link) => link.requirement === 'required');
-  const requiredGroups = new Set(requiredFacts.map((link) => link.group_id)[REDACTED]);
+  const requiredGroups = new Set(requiredFacts.map((link) => link.group_id).filter(Boolean));
   const alternativeGroups = new Set(links
     .filter((link) => link.requirement === 'required_any')
     .map((link) => link.group_id || 'A1'));
@@ -744,14 +749,14 @@ function chunkIdsOfFact(factId) {
 }
 
 function evidenceOfFact(factId) {
-  return evidenceIdsOfFact(factId).map(evidence)[REDACTED];
+  return evidenceIdsOfFact(factId).map(evidence).filter(Boolean);
 }
 
 function factTopicsOfEvidence(evidenceId) {
   return unique(rows('fact_evidence')
     .filter((row) => (row.evidence_ids || []).includes(evidenceId))
     .map((row) => fact(row.fact_id)?.topic)
-    [REDACTED]);
+    .filter(Boolean));
 }
 
 function statusChip(status) {
@@ -947,7 +952,7 @@ function normalizeNavigationParams(input = {}) {
 }
 
 function extendReturnChain(params, screen) {
-  const chain = text(params.returnTo).split(',')[REDACTED];
+  const chain = text(params.returnTo).split(',').filter(Boolean);
   return chain.includes(screen) ? chain.join(',') : [...chain, screen].join(',');
 }
 
@@ -1192,7 +1197,7 @@ function familyOfQuery(queryId) {
   if (!row) return [];
   const rootId = row.parent_query_id && query(row.parent_query_id) ? row.parent_query_id : row.query_id;
   return [query(rootId), ...rows('queries').filter((item) => item.parent_query_id === rootId)]
-    [REDACTED];
+    .filter(Boolean);
 }
 
 function sortedQueries() {
@@ -1239,7 +1244,7 @@ function evidenceMatches(row) {
   if (term) {
     const chunkText = chunkIdsOfEvidence(row.evidence_id)
       .map((chunkId) => localChunk(chunkId))
-      [REDACTED]
+      .filter(Boolean)
       .map((chunk) => `${chunk.document_name} ${chunk.content}`)
       .join(' ');
     const haystack = normalizeText(`${row.evidence_id} ${row.title} ${row.excerpt} ${chunkText}`);
@@ -1249,7 +1254,7 @@ function evidenceMatches(row) {
   if (ui.filters.document) {
     const docs = chunkIdsOfEvidence(row.evidence_id)
       .map((chunkId) => localChunk(chunkId)?.document_name)
-      [REDACTED];
+      .filter(Boolean);
     if (!docs.includes(ui.filters.document)) return false;
   }
   if (ui.filters.topic && !factTopicsOfEvidence(row.evidence_id).includes(ui.filters.topic)) return false;
@@ -1272,14 +1277,14 @@ function chunkMatches(row) {
 }
 
 function documentOptionsFromChunks() {
-  return unique(chunkPool().map((chunk) => chunk.document_name)[REDACTED])
+  return unique(chunkPool().map((chunk) => chunk.document_name).filter(Boolean))
     .sort((a, b) => a.localeCompare(b, 'zh-CN'));
 }
 
 function topicOptions() {
   const taxonomy = ui.data?.taxonomy?.topics || [];
   const known = new Map(taxonomy.map((item) => [item.name, item.id]));
-  const existing = rows('facts').map((row) => row.topic)[REDACTED];
+  const existing = rows('facts').map((row) => row.topic).filter(Boolean);
   return unique([...taxonomy.map((item) => item.name), ...existing])
     .map((name) => ({ name, id: known.get(name) || '' }))
     .sort((left, right) => {
@@ -1337,7 +1342,7 @@ function renderFactReview() {
     })}</div></section>`;
   }
   const queue = sortedFacts();
-  const references = rows('query_facts').filter((link) => link.fact_id === row.fact_id).map((link) => query(link.query_id))[REDACTED];
+  const references = rows('query_facts').filter((link) => link.fact_id === row.fact_id).map((link) => query(link.query_id)).filter(Boolean);
   const linkedEvidence = evidenceOfFact(row.fact_id);
   return `
     <section class="screen workbench-screen fact-review-screen">
@@ -1611,7 +1616,7 @@ function renderEvidenceCandidate(row) {
   const selected = ui.selectedEvidenceIds.has(row.evidence_id);
   const linked = evidenceIdsOfFact(ui.factId).includes(row.evidence_id);
   const chunkIds = chunkIdsOfEvidence(row.evidence_id);
-  const chunks = chunkIds.map(localChunk)[REDACTED];
+  const chunks = chunkIds.map(localChunk).filter(Boolean);
   const documentName = chunks[0]?.document_name || '';
   const page = chunks[0]?.page || '';
   return `
@@ -1712,13 +1717,13 @@ function emptyState({
 function apiErrorText(error) {
   const message = text(error?.message) || '请求失败';
   const details = Array.isArray(error?.details)
-    ? error.details.map((item) => text(item))[REDACTED].slice(0, 4)
+    ? error.details.map((item) => text(item)).filter(Boolean).slice(0, 4)
     : [];
   return details.length ? `${message}：${details.join('；')}` : message;
 }
 
 function currentDraftChunks() {
-  return unique(ui.editorDraft?.chunkIds || []).map(findChunk)[REDACTED];
+  return unique(ui.editorDraft?.chunkIds || []).map(findChunk).filter(Boolean);
 }
 
 function sameIdSet(left, right) {
@@ -1906,7 +1911,7 @@ function renderDetailPanel() {
 
 function renderActionDock() {
   const linked = evidenceOfFact(ui.factId);
-  const selected = [...ui.selectedEvidenceIds].map(evidence)[REDACTED];
+  const selected = [...ui.selectedEvidenceIds].map(evidence).filter(Boolean);
   const hasPending = selected.length > 0;
   return `
     <div class="action-dock">
@@ -2746,6 +2751,182 @@ function renderOverview() {
     </section>`;
 }
 
+function evidenceSourceGaps() {
+  const knownChunkIds = new Set(rows('chunks').map((row) => row.chunk_id));
+  const chunksByEvidence = new Map();
+  const referencedChunkIds = new Set();
+  for (const relation of rows('evidence_chunks')) {
+    const chunkIds = unique(relation.chunk_ids || []).filter((id) => knownChunkIds.has(id));
+    if (!chunkIds.length) continue;
+    chunksByEvidence.set(relation.evidence_id, unique([...(chunksByEvidence.get(relation.evidence_id) || []), ...chunkIds]));
+    chunkIds.forEach((id) => referencedChunkIds.add(id));
+  }
+  const compareIds = (left, right) => left.localeCompare(right, 'zh-CN', { numeric: true });
+  return {
+    missingEvidence: rows('evidences')
+      .filter((row) => !(chunksByEvidence.get(row.evidence_id) || []).length)
+      .sort((left, right) => compareIds(left.evidence_id, right.evidence_id)),
+    orphanChunks: rows('chunks')
+      .filter((row) => !referencedChunkIds.has(row.chunk_id))
+      .sort((left, right) => compareIds(left.chunk_id, right.chunk_id)),
+  };
+}
+
+function renderEvidenceRepairQueue(gaps) {
+  const workspace = ui.evidenceWorkspace;
+  const bucket = workspace.repairBucket === 'chunks' ? 'chunks' : 'evidence';
+  const selectedChunks = gaps.orphanChunks.filter((chunk) => workspace.repairChunkSelection.has(chunk.chunk_id));
+  const targetEvidenceOptions = [...rows('evidences')]
+    .sort((left, right) => left.evidence_id.localeCompare(right.evidence_id, 'zh-CN', { numeric: true }));
+  const missingEvidenceMarkup = gaps.missingEvidence.map((row) => {
+    const linkedFacts = rows('fact_evidence')
+      .filter((link) => (link.evidence_ids || []).includes(row.evidence_id))
+      .map((link) => link.fact_id);
+    const factSummary = linkedFacts.length ? `关联 Fact：${linkedFacts.map(esc).join('、')}` : '尚未关联 Fact';
+    return `
+      <article class="repair-row">
+        <div class="repair-row-main">
+          <div class="repair-row-title">
+            <strong>${esc(row.title || '未命名 Evidence')}</strong>
+            ${statusChip(row.status)}
+            <span class="mono">${esc(row.evidence_id)}</span>
+          </div>
+          <p>${esc(compactExcerpt(row.excerpt, 150))}</p>
+          <small>${factSummary} · 缺少来源 Chunk</small>
+        </div>
+        <button class="btn btn-sm btn-primary" data-action="repair-evidence-source" data-id="${attr(row.evidence_id)}" type="button">
+          ${icon('search')} 查找并绑定 Chunk
+        </button>
+      </article>`;
+  }).join('');
+  const orphanChunkMarkup = gaps.orphanChunks.map((chunk) => {
+    const selected = workspace.repairChunkSelection.has(chunk.chunk_id);
+    const page = chunk.page ? `<span class="tiny muted">${esc(pageLabel(chunk.page))}</span>` : '';
+    return `
+      <article class="repair-row repair-chunk-row ${selected ? 'selected' : ''}">
+        <button class="check ${selected ? 'checked' : ''}" data-action="toggle-orphan-chunk" data-id="${attr(chunk.chunk_id)}" type="button" aria-label="${selected ? '取消选择' : '选择'} ${attr(chunk.chunk_id)}">${selected ? icon('check') : ''}</button>
+        <div class="repair-row-main">
+          <div class="repair-row-title">
+            <strong>${esc(chunk.document_name || chunk.document_id || '未命名文档')}</strong>
+            <span class="mono">${esc(chunk.chunk_id)}</span>
+            ${page}
+          </div>
+          <p>${esc(compactExcerpt(chunk.content, 150))}</p>
+          <small>当前没有任何 Evidence 引用此 Chunk</small>
+        </div>
+        <button class="btn btn-sm btn-ghost" data-action="delete-orphan-chunk" data-id="${attr(chunk.chunk_id)}" type="button" title="仅从 Golden 本地数据集中移除">
+          ${icon('trash')} 移除本地记录
+        </button>
+      </article>`;
+  }).join('');
+  const selectionActions = selectedChunks.length ? `
+    <div class="evidence-repair-actions">
+      <span class="tiny muted">已选 ${selectedChunks.length} 个孤儿 Chunk</span>
+      <label class="repair-link-target">
+        <span class="field-label">绑定到已有 Evidence</span>
+        <select class="select" data-action="select-repair-link-target" aria-label="选择要绑定的 Evidence" ${targetEvidenceOptions.length ? '' : 'disabled'}>
+          <option value="">选择 Evidence</option>
+          ${targetEvidenceOptions.map((row) => `<option value="${attr(row.evidence_id)}" ${workspace.repairLinkTargetId === row.evidence_id ? 'selected' : ''}>${esc(row.evidence_id)} · ${esc(compactExcerpt(row.title, 42))}</option>`).join('')}
+        </select>
+      </label>
+      <button class="btn btn-sm btn-outline" data-action="link-orphan-chunks" type="button" ${workspace.repairLinkTargetId && !ui.busy ? '' : 'disabled'}>
+        ${icon('link')} 绑定所选 Chunk
+      </button>
+      <button class="btn btn-sm btn-success" data-action="create-evidence-from-orphans" type="button" ${fact(workspace.factId) && !ui.busy ? '' : 'disabled'}>
+        ${icon('plus')} 创建 Evidence 草稿
+      </button>
+    </div>` : '';
+  const activeList = bucket === 'evidence'
+    ? gaps.missingEvidence.length ? missingEvidenceMarkup : emptyState({
+      title: 'Evidence 来源完整',
+      copy: '每条 Evidence 都至少关联了一个有效 Chunk。',
+      iconName: 'check',
+      compact: true,
+    })
+    : gaps.orphanChunks.length ? orphanChunkMarkup + selectionActions : emptyState({
+      title: '没有孤儿 Chunk',
+      copy: '所有本地 Chunk 都已被至少一条 Evidence 引用。',
+      iconName: 'check',
+      compact: true,
+    });
+  return `
+    <section class="panel evidence-repair-panel">
+      <div class="evidence-repair-head">
+        <div>
+          <h2>关系缺口待办</h2>
+          <p>按缺口类型处理：先补齐没有来源 Chunk 的 Evidence，再处理没有 Evidence 引用的 Chunk。</p>
+        </div>
+        <span class="chip plain">${gaps.missingEvidence.length + gaps.orphanChunks.length} 项待处理</span>
+      </div>
+      <div class="evidence-repair-tabs" role="tablist" aria-label="关系缺口类型">
+        <button class="tab ${bucket === 'evidence' ? 'active' : ''}" data-action="set-evidence-repair-bucket" data-bucket="evidence" type="button" aria-pressed="${bucket === 'evidence'}">
+          Evidence 缺来源 <span class="tab-count">${gaps.missingEvidence.length}</span>
+        </button>
+        <button class="tab ${bucket === 'chunks' ? 'active' : ''}" data-action="set-evidence-repair-bucket" data-bucket="chunks" type="button" aria-pressed="${bucket === 'chunks'}">
+          Chunk 无 Evidence <span class="tab-count">${gaps.orphanChunks.length}</span>
+        </button>
+      </div>
+      <div class="evidence-repair-list">${activeList}</div>
+    </section>`;
+}
+
+function repairEvidenceSource(evidenceId) {
+  const row = evidence(evidenceId);
+  if (!row) return;
+  const workspace = ui.evidenceWorkspace;
+  workspace.repairBucket = 'evidence';
+  workspace.targetEvidenceId = evidenceId;
+  const factId = rows('fact_evidence')
+    .find((link) => (link.evidence_ids || []).includes(evidenceId))?.fact_id || '';
+  if (fact(factId)) {
+    workspace.factId = factId;
+    const queryId = rows('query_facts').find((link) => link.fact_id === factId)?.query_id || '';
+    if (query(queryId)) {
+      workspace.queryId = queryId;
+      workspace.queryText = text(query(queryId).text);
+    }
+  }
+  render();
+  requestAnimationFrame(() => document.querySelector('[data-evidence-search]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+
+async function linkSelectedChunksToEvidence(evidenceId, candidates = selectedAutoMatchCandidates(), { repairQueue = false } = {}) {
+  if (!evidence(evidenceId)) {
+    toast('目标 Evidence 不存在或已被删除', 'error');
+    return;
+  }
+  if (!candidates.length) {
+    toast('请先选择至少一个来源 Chunk', 'info');
+    return;
+  }
+  const chunks = candidates.map(normalizeChunkForSave).filter((chunk) => chunk.chunk_id);
+  const knownChunkIds = new Set(rows('chunks').map((chunk) => chunk.chunk_id));
+  const currentChunkIds = chunkIdsOfEvidence(evidenceId).filter((chunkId) => knownChunkIds.has(chunkId));
+  const chunkIds = unique([...currentChunkIds, ...chunks.map((chunk) => chunk.chunk_id)]);
+  if (chunkIds.length === currentChunkIds.length) {
+    toast('所选 Chunk 已关联到这条 Evidence', 'info');
+    return;
+  }
+  const result = await runMutation(() => api.linkEvidenceChunks(evidenceId, chunkIds, chunks), {
+    success: `已为 ${evidenceId} 绑定 ${chunkIds.length - currentChunkIds.length} 个 Chunk`,
+    after: () => {
+      const workspace = ui.evidenceWorkspace;
+      if (repairQueue) workspace.repairChunkSelection.clear();
+      else {
+        workspace.selectedChunkIds.clear();
+        workspace.selectedChunks.clear();
+        workspace.selectionOrder = [];
+      }
+      workspace.targetEvidenceId = '';
+      workspace.repairLinkTargetId = '';
+    },
+  });
+  if (result) {
+    await loadEvidenceInventory({ silent: true });
+    render();
+  }
+}
+
 function renderEvidenceLibrary() {
   const workspace = ui.evidenceWorkspace;
   const datasetOptions = configuredDatasetOptions();
@@ -2754,12 +2935,14 @@ function renderEvidenceLibrary() {
   const loading = workspace.loading;
   const datasetsConfigured = Boolean(ui.data?.config?.ragflow?.configured);
   const selectedCandidates = selectedAutoMatchCandidates();
+  const gaps = evidenceSourceGaps();
+  const targetEvidence = evidence(workspace.targetEvidenceId);
   return `
     <section class="screen evidence-screen">
       <div class="screen-head">
         <div>
           <h1>证据库</h1>
-          <p>用关键字分别检索 A、B 线索，勾选后 Source Chunk 会保留在选区。也可以切到 Query 自动匹配；切换 Query 不会清空已选 Chunk。</p>
+          <p>先处理关系缺口，再检索补充来源。Evidence 缺 Chunk 优先，随后处理没有 Evidence 引用的 Chunk。</p>
         </div>
         <div class="head-actions">
           <button class="btn btn-outline" data-action="refresh-evidence-inventory" type="button" ${loading ? 'disabled' : ''}>
@@ -2777,15 +2960,22 @@ function renderEvidenceLibrary() {
         ${renderEvidenceKpi('缺少 Chunk 的 Evidence', inventoryValue('evidence_without_chunk_count', rows('evidences').filter((row) => !(row.evidence_chunks || []).length && !rows('evidence_chunks').some((link) => link.evidence_id === row.evidence_id && (link.chunk_ids || []).length)).length), '条', '召回时暂不计分')}
       </div>
 
-      <div class="evidence-grid">
+      ${renderEvidenceRepairQueue(gaps)}
+
+      <div class="evidence-grid" data-evidence-search>
         <section class="panel">
           <div class="panel-head">
             <div class="panel-title">
-              <h2>Chunk 检索配置</h2>
+              <h2>查找来源 Chunk</h2>
               <small>${datasetOptions.length ? `${datasetOptions.length} 个数据集` : datasetsConfigured ? '配置尚未同步，请刷新' : '等待数据集配置'}</small>
             </div>
           </div>
           <div class="panel-body evidence-config-body">
+            ${targetEvidence ? `
+              <div class="repair-target-banner">
+                <div><strong>正在补充 Evidence 来源</strong><span>${esc(targetEvidence.evidence_id)} · ${esc(compactExcerpt(targetEvidence.title, 48))}</span></div>
+                <button class="btn btn-sm btn-ghost" data-action="clear-evidence-repair-target" type="button">取消补绑</button>
+              </div>` : ''}
             <div class="evidence-mode-tabs" role="tablist" aria-label="Chunk 检索方式">
               <button class="tab ${workspace.mode === 'keyword' ? 'active' : ''}" data-action="set-evidence-mode" data-mode="keyword" type="button" aria-pressed="${workspace.mode === 'keyword'}">${icon('search')} 关键字检索</button>
               <button class="tab ${workspace.mode === 'query' ? 'active' : ''}" data-action="set-evidence-mode" data-mode="query" type="button" aria-pressed="${workspace.mode === 'query'}">${icon('sparkle')} Query 自动匹配</button>
@@ -2802,13 +2992,13 @@ function renderEvidenceLibrary() {
             ${workspace.mode === 'keyword' ? `
             <label class="field">
               <span class="field-label">检索关键字</span>
-              <input class="input" data-bind="evidence-keyword" value="${attr(workspace.keywordInput)}" placeholder="输入 A 关键词，找到后再查 B；已选 Chunk 会保留" maxlength="300">
+              <input class="input" data-bind="evidence-keyword" value="${attr(workspace.keywordInput)}" placeholder="输入用于查找来源 Chunk 的关键词" maxlength="300">
               <span class="hint">关键字直接送入 RAGFlow 检索。每次检索只替换候选列表，不会清空已选来源。</span>
             </label>
             <button class="btn btn-primary btn-block" data-action="search-evidence-keywords" type="button" ${workspace.keywordLoading || !datasetsConfigured ? 'disabled' : ''}>
               ${workspace.keywordLoading ? '<span class="spinner light"></span>' : icon('search')} 查找 Chunk
             </button>` : ''}
-            <label class="field">
+            <label class="field" ${workspace.mode === 'keyword' ? 'hidden' : ''}>
               <span class="field-label">Query</span>
               <select class="select" data-action="select-evidence-query" aria-label="选择 Query" ${queryOptions.length ? '' : 'disabled'}>
                 ${queryOptions.length ? queryOptions.map((item) => `
@@ -2817,17 +3007,17 @@ function renderEvidenceLibrary() {
               </select>
               <span class="hint">优先使用工作台当前 Query，也可以选择数据集里的其他 Query。</span>
             </label>
-            <label class="field">
+            <label class="field" ${workspace.mode === 'keyword' ? 'hidden' : ''}>
               <span class="field-label">Query 文本</span>
               <textarea class="textarea" data-bind="evidence-query-text" rows="3" placeholder="输入主问，保留关键限定" maxlength="500" ${workspace.queryId ? '' : 'readonly'}>${esc(workspace.queryText)}</textarea>
             </label>
             <div class="form-grid">
               <label class="field span-2">
-                <span class="field-label">目标 Fact</span>
+                <span class="field-label">${workspace.mode === 'query' ? '目标 Fact' : 'Evidence 关联 Fact'}</span>
                 <select class="select" data-action="select-evidence-fact" aria-label="选择 Fact" ${factOptions.length ? '' : 'disabled'}>
                   ${factOptions.length ? factOptions.map((item) => `
                     <option value="${attr(item.id)}" ${item.id === workspace.factId ? 'selected' : ''}>${esc(item.text)}</option>`).join('')
-                    : '<option value="">当前 Query 尚未关联 Fact</option>'}
+                    : `<option value="">${workspace.mode === 'query' ? '当前 Query 尚未关联 Fact' : '暂无可用 Fact'}</option>`}
                 </select>
                 <span class="hint">新 Evidence 会关联到这条 Fact。一个 Evidence 可以引用多个来源 Chunk。</span>
               </label>
@@ -2837,7 +3027,7 @@ function renderEvidenceLibrary() {
                   ${[6, 12, 24, 48].map((value) => `<option value="${value}" ${workspace.topK === value ? 'selected' : ''}>Top ${value}</option>`).join('')}
                 </select>
               </label>
-              <label class="field">
+              <label class="field" ${workspace.mode === 'keyword' ? 'hidden' : ''}>
                 <span class="field-label">最低相似度</span>
                 <select class="select" data-action="set-evidence-min-similarity" aria-label="最低相似度">
                   ${[0, 0.1, 0.2, 0.3, 0.4, 0.5].map((value) => `<option value="${value}" ${workspace.minSimilarity === value ? 'selected' : ''}>${value.toFixed(1)}</option>`).join('')}
@@ -2866,8 +3056,8 @@ function renderEvidenceLibrary() {
           </div>
           <div class="evidence-selected-panel">
             <div class="evidence-selected-head">
-              <strong>待构建 Evidence 的来源</strong>
-              <span class="tiny muted">${selectedCandidates.length} 个 Chunk · 跨检索和 Query 保留</span>
+                <strong>${targetEvidence ? `待绑定到 ${esc(targetEvidence.evidence_id)} 的来源` : '待构建 Evidence 的来源'}</strong>
+                <span class="tiny muted">${selectedCandidates.length} 个 Chunk · 切换检索方式时保留</span>
             </div>
             <div class="evidence-selected-list">
               ${selectedCandidates.length ? selectedCandidates.map((candidate, index) => `
@@ -2884,9 +3074,14 @@ function renderEvidenceLibrary() {
             <span class="spacer"></span>
             <button class="btn btn-ghost" data-action="clear-evidence-auto-selection" type="button" ${selectedCandidates.length ? '' : 'disabled'}>清空选择</button>
             <button class="btn btn-outline" data-action="send-auto-match-to-workbench" type="button" ${selectedCandidates.length ? '' : 'disabled'}>${icon('chunk')} 送入 Fact 审核台</button>
-            <button class="btn btn-success" data-action="create-evidence-draft" type="button" ${selectedCandidates.length && fact(workspace.factId) && !ui.busy ? '' : 'disabled'}>
-              ${icon('plus')} 创建 Evidence 草稿
-            </button>
+            ${targetEvidence ? `
+              <button class="btn btn-success" data-action="link-selected-evidence-chunks" type="button" ${selectedCandidates.length && !ui.busy ? '' : 'disabled'}>
+                ${icon('link')} 绑定到 ${esc(targetEvidence.evidence_id)}
+              </button>
+              <button class="btn btn-ghost" data-action="clear-evidence-repair-target" type="button">取消补绑</button>` : `
+              <button class="btn btn-success" data-action="create-evidence-draft" type="button" ${selectedCandidates.length && fact(workspace.factId) && !ui.busy ? '' : 'disabled'}>
+                ${icon('plus')} 创建 Evidence 草稿
+              </button>`}
           </div>
         </section>
       </div>
@@ -3614,7 +3809,7 @@ function currentNavigationParams() {
 }
 
 function returnNavigationParams(params = currentNavigationParams()) {
-  const chain = text(params.returnTo).split(',')[REDACTED];
+  const chain = text(params.returnTo).split(',').filter(Boolean);
   const remaining = chain.slice(0, -1);
   if (!remaining.length) remaining.push(params.query ? 'workbench' : 'facts');
   return {
@@ -3627,7 +3822,7 @@ function returnNavigationParams(params = currentNavigationParams()) {
 
 function navigateFromReturnChain() {
   const params = currentNavigationParams();
-  const chain = text(params.returnTo).split(',')[REDACTED];
+  const chain = text(params.returnTo).split(',').filter(Boolean);
   const nextScreen = chain.at(-1) || 'workbench';
   navigate(nextScreen, returnNavigationParams(params));
 }
@@ -3850,7 +4045,7 @@ async function runEvidenceAutoMatch() {
     if (isStale) return;
     workspace.candidates = (Array.isArray(result?.candidates) ? result.candidates : [])
       .map(normalizeCandidate)
-      [REDACTED];
+      .filter(Boolean);
     workspace.candidatesByMode.query = workspace.candidates;
     if (workspace.mode === 'query') workspace.candidates = workspace.candidates;
     rememberEvidenceCandidates(workspace.candidates);
@@ -3882,10 +4077,9 @@ async function runEvidenceAutoMatch() {
   }
 }
 
-function openEvidenceCreateDraft() {
+function openEvidenceCreateDraft(candidates = selectedAutoMatchCandidates(), { repairQueue = false } = {}) {
   const workspace = ui.evidenceWorkspace;
   if (ui.busy) return;
-  const candidates = selectedAutoMatchCandidates();
   if (!candidates.length) {
     toast('请先选择至少一个候选 Chunk', 'info');
     return;
@@ -3898,6 +4092,7 @@ function openEvidenceCreateDraft() {
   const chunks = candidates.map(normalizeChunkForSave);
   ui.modal = {
     type: 'evidence-create',
+    origin: repairQueue ? 'repair-queue' : '',
     stage: 'editing',
     error: '',
     polishError: '',
@@ -3957,7 +4152,7 @@ async function saveEvidenceCreateDraft() {
   const targetFact = fact(draft.fact_id);
   const chunks = unique(draft.chunks.map((chunk) => chunk.chunk_id))
     .map((chunkId) => draft.chunks.find((chunk) => chunk.chunk_id === chunkId))
-    [REDACTED];
+    .filter(Boolean);
   if (!targetFact) return evidenceCreateDraftError('目标 Fact 已不存在，请返回候选列表后重新选择。');
   if (!title) return evidenceCreateDraftError('请填写 Evidence 标题。');
   if (!excerpt) return evidenceCreateDraftError('请填写 Evidence 摘录。');
@@ -3981,6 +4176,7 @@ async function saveEvidenceCreateDraft() {
     after: (saved) => {
       const workspace = ui.evidenceWorkspace;
       workspace.selectedChunkIds.clear();
+      if (modalState.origin === 'repair-queue') workspace.repairChunkSelection.clear();
       const evidenceId = saved?.evidence?.evidence_id || '';
       workspace.candidates = workspace.candidates.map((candidate) => (
         chunkIds.includes(candidate.chunk_id)
@@ -3988,7 +4184,7 @@ async function saveEvidenceCreateDraft() {
             ...candidate,
             is_linked: true,
             matched_fact_ids: unique([...candidate.matched_fact_ids, targetFact.fact_id]),
-            matched_evidence_ids: unique([...candidate.matched_evidence_ids, evidenceId][REDACTED]),
+            matched_evidence_ids: unique([...candidate.matched_evidence_ids, evidenceId].filter(Boolean)),
           }
           : candidate
       ));
@@ -4309,10 +4505,17 @@ async function saveQueryFacts({ success = 'Query 的 Fact 关联已保存', adva
 async function confirmDelete() {
   if (ui.modal?.type !== 'delete') return;
   const modalState = ui.modal;
-  await runMutation(() => api.deleteEntity(modalState.entityType, modalState.id), {
+  const result = await runMutation(() => api.deleteEntity(modalState.entityType, modalState.id), {
     success: `已删除 ${modalState.id}`,
     after: () => {
       ui.modal = null;
+      if (modalState.entityType === 'chunks') {
+        const workspace = ui.evidenceWorkspace;
+        workspace.repairChunkSelection.delete(modalState.id);
+        workspace.selectedChunkIds.delete(modalState.id);
+        workspace.selectedChunks.delete(modalState.id);
+        workspace.selectionOrder = workspace.selectionOrder.filter((id) => id !== modalState.id);
+      }
       if (modalState.entityType === 'facts') {
         if (ui.factDraft?.fact_id === modalState.id) setFactDraft(rows('facts')[0]?.fact_id || '');
       }
@@ -4322,6 +4525,10 @@ async function confirmDelete() {
       }
     },
   });
+  if (result && modalState.entityType === 'chunks' && ui.screen === 'evidence') {
+    await loadEvidenceInventory({ silent: true });
+    render();
+  }
 }
 
 function updateBoundValue(bind, element) {
@@ -4480,12 +4687,15 @@ function handleChange(event) {
     ui.topK = Number(element.value) || 12;
     render();
   } else if (action === 'set-evidence-datasets') {
-    ui.evidenceWorkspace.datasetIds = [...element.selectedOptions].map((option) => option.value)[REDACTED];
+    ui.evidenceWorkspace.datasetIds = [...element.selectedOptions].map((option) => option.value).filter(Boolean);
     render();
   } else if (action === 'select-evidence-query') {
     evidenceSelectQuery(element.value);
   } else if (action === 'select-evidence-fact') {
     ui.evidenceWorkspace.factId = fact(element.value) ? element.value : '';
+    render();
+  } else if (action === 'select-repair-link-target') {
+    ui.evidenceWorkspace.repairLinkTargetId = evidence(element.value) ? element.value : '';
     render();
   } else if (action === 'set-evidence-top-k') {
     ui.evidenceWorkspace.topK = Number(element.value) || 6;
@@ -4584,6 +4794,45 @@ async function dispatchClickAction(action, element) {
     await searchEvidenceKeywords();
   } else if (action === 'set-evidence-mode') {
     setEvidenceMode(element.dataset.mode);
+  } else if (action === 'set-evidence-repair-bucket') {
+    ui.evidenceWorkspace.repairBucket = element.dataset.bucket === 'chunks' ? 'chunks' : 'evidence';
+    render();
+  } else if (action === 'repair-evidence-source') {
+    repairEvidenceSource(element.dataset.id || '');
+  } else if (action === 'clear-evidence-repair-target') {
+    ui.evidenceWorkspace.targetEvidenceId = '';
+    render();
+  } else if (action === 'toggle-orphan-chunk') {
+    const chunkId = element.dataset.id || '';
+    const workspace = ui.evidenceWorkspace;
+    if (workspace.repairChunkSelection.has(chunkId)) workspace.repairChunkSelection.delete(chunkId);
+    else if (evidenceSourceGaps().orphanChunks.some((chunk) => chunk.chunk_id === chunkId)) workspace.repairChunkSelection.add(chunkId);
+    render();
+  } else if (action === 'delete-orphan-chunk') {
+    const chunkId = element.dataset.id || '';
+    const chunk = localChunk(chunkId);
+    if (!chunk || !evidenceSourceGaps().orphanChunks.some((row) => row.chunk_id === chunkId)) return;
+    openDeleteConfirmation(
+      'chunks',
+      chunkId,
+      chunkId + ' · ' + (chunk.document_name || 'Chunk'),
+      '仅从当前 Golden 数据集中移除本地 Chunk 记录，不会删除或禁用 RAGFlow 中的原始 Chunk。',
+    );
+  } else if (action === 'create-evidence-from-orphans') {
+    const chunks = evidenceSourceGaps().orphanChunks
+      .filter((chunk) => ui.evidenceWorkspace.repairChunkSelection.has(chunk.chunk_id))
+      .map(normalizeCandidate)
+      .filter(Boolean);
+    openEvidenceCreateDraft(chunks, { repairQueue: true });
+  } else if (action === 'link-orphan-chunks') {
+    const workspace = ui.evidenceWorkspace;
+    const chunks = evidenceSourceGaps().orphanChunks
+      .filter((chunk) => workspace.repairChunkSelection.has(chunk.chunk_id))
+      .map(normalizeCandidate)
+      .filter(Boolean);
+    await linkSelectedChunksToEvidence(workspace.repairLinkTargetId, chunks, { repairQueue: true });
+  } else if (action === 'link-selected-evidence-chunks') {
+    await linkSelectedChunksToEvidence(ui.evidenceWorkspace.targetEvidenceId);
   } else if (action === 'toggle-evidence-candidate') {
     toggleEvidenceCandidate(element.dataset.id || '');
   } else if (action === 'clear-evidence-auto-selection') {
@@ -4671,7 +4920,7 @@ async function dispatchClickAction(action, element) {
       toast('请先选择 Fact', 'error');
       return;
     }
-    const chunks = [...ui.selectedChunkIds].map(findChunk)[REDACTED];
+    const chunks = [...ui.selectedChunkIds].map(findChunk).filter(Boolean);
     if (!chunks.length) {
       toast('请先选择至少一个 Chunk', 'info');
       return;

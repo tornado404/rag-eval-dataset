@@ -1,8 +1,8 @@
-[REDACTED]
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import http from 'node:http';
-[REDACTED]
+import { execFileSync } from 'node:child_process';
 import { REPO_ROOT, datasetDir, readJsonl, writeJsonl, validateDataset } from '../scripts/lib/dataset.mjs';
 import { normalizeEvaluationRequest, runEvaluation } from './evaluator.mjs';
 
@@ -26,7 +26,7 @@ const outputsPath = path.join(datasetDir(VERSION), 'expected_outputs.jsonl');
 const EVAL_CONFIG_FILE = process.env.EVAL_CONFIG_FILE || path.join(os.homedir(), '.config', 'rag-eval-dataset', 'eval.env');
 
 function readEnvFile(file) {
-  [REDACTED]
+  const values = {};
   let text;
   try {
     text = fs.readFileSync(file, 'utf8');
@@ -34,15 +34,15 @@ function readEnvFile(file) {
     return values;
   }
   for (const rawLine of text.split(/\r?\n/)) {
-    [REDACTED]
-    [REDACTED]
-    [REDACTED]
-    [REDACTED]
-    [REDACTED]
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const normalized = line.startsWith('export ') ? line.slice(7).trim() : line;
+    const separator = normalized.indexOf('=');
+    if (separator <= 0) continue;
     const key = normalized.slice(0, separator).trim();
-    [REDACTED]
-    [REDACTED]
-      [REDACTED]
+    let value = normalized.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
     }
     values[key] = value;
   }
@@ -57,7 +57,7 @@ function evalEnv(name) {
 }
 
 function splitList(value) {
-  return String(value || '').split(/[\s,，]+/).map((item) => item.trim())[REDACTED];
+  return String(value || '').split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean);
 }
 
 function buildEvalDefaults() {
@@ -96,7 +96,7 @@ function withServerDefaults(body) {
     config.ragflowBaseUrl = config.ragflowBaseUrl || defaults.ragflowBaseUrl;
     config.ragflowApiKey = config.ragflowApiKey || evalEnv('RAGFLOW_API_KEY');
     const datasetIds = Array.isArray(config.datasetIds)
-      ? config.datasetIds.map((item) => String(item).trim())[REDACTED]
+    ? config.datasetIds.map((item) => String(item).trim()).filter(Boolean)
       : [];
     config.datasetIds = datasetIds.length ? datasetIds : defaults.datasetIds;
   } else if (config.target === 'qa-probe') {

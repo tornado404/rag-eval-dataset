@@ -1,5 +1,5 @@
-[REDACTED]
-[REDACTED]
+import fs from 'node:fs';
+import path from 'node:path';
 import { goldenDir, readState } from './golden.mjs';
 
 const CLAIM_FILE = 'query-claims.jsonl';
