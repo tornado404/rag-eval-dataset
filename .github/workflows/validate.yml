@@ -16,7 +16,7 @@ jobs:
           if [[ -x "$NODE_BIN" ]]; then
             "$NODE_BIN" scripts/lint.mjs
             "$NODE_BIN" scripts/validate.mjs
-            "$NODE_BIN" --test test
+            "$NODE_BIN" --test "test/**/*.test.mjs"
           else
             npm run check
           fi
