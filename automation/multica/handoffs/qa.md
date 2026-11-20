@@ -1,0 +1,1 @@
+Run RAGED-QA. Read the current PR head SHA and checks for that SHA, run allowed local checks, and match every acceptance criterion to evidence. Do not treat skipped private-data validation as a full pass. Move to awaiting_merge when evidence is complete or explicitly mark manual_data_validation_required. Move back to Development at most two times, then blocked.

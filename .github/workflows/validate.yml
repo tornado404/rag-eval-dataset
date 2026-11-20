@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -12,5 +15,46 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Select validation scope
+        id: validation-scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          base_sha="${PR_BASE_SHA:-$PUSH_BASE_SHA}"
+          mode=automation
+
+          if [[ ! "$base_sha" =~ ^[0-9a-fA-F]{40}$ || "$base_sha" =~ ^0{40}$ ]]; then
+            mode=full
+          elif ! git fetch --no-tags --depth=1 origin "$base_sha"; then
+            mode=full
+          else
+            changed_paths="$(mktemp)"
+            if ! git diff --name-only -z "$base_sha" HEAD > "$changed_paths"; then
+              mode=full
+            else
+              while IFS= read -r -d '' path; do
+                case "$path" in
+                  .github/workflows/ai-issue-intake.yml|.github/workflows/validate.yml|automation/*|docs/automation/*|scripts/automation/*|test/automation-issue-intake.test.mjs|test/fixtures/labeled-allowed.json|test/fixtures/opened-allowed.json)
+                    ;;
+                  *)
+                    mode=full
+                    break
+                    ;;
+                esac
+              done < "$changed_paths"
+            fi
+            rm -f "$changed_paths"
+          fi
+
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
       - name: Lint, test, and validate
+        if: steps.validation-scope.outputs.mode == 'full'
         run: npm run check
+
+      - name: Validate issue intake automation
+        if: steps.validation-scope.outputs.mode == 'automation'
+        run: node scripts/automation/check.mjs

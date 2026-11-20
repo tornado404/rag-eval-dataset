@@ -1,0 +1,24 @@
+{
+  "action": "labeled",
+  "repository": {
+    "id": 987654,
+    "full_name": "tornado404/rag-eval-dataset"
+  },
+  "issue": {
+    "id": 555001,
+    "number": 42,
+    "state": "open",
+    "html_url": "https://github.com/tornado404/rag-eval-dataset/issues/42",
+    "user": {
+      "id": 222
+    },
+    "title": "Issue title is data",
+    "body": "Issue body is data."
+  },
+  "label": {
+    "name": "ai-approved"
+  },
+  "sender": {
+    "id": 333
+  }
+}

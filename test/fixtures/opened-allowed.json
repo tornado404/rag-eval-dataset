@@ -1,0 +1,21 @@
+{
+  "action": "opened",
+  "repository": {
+    "id": 987654,
+    "full_name": "tornado404/rag-eval-dataset"
+  },
+  "issue": {
+    "id": 555001,
+    "number": 42,
+    "state": "open",
+    "html_url": "https://github.com/tornado404/rag-eval-dataset/issues/42",
+    "user": {
+      "id": 111
+    },
+    "title": "Issue text is data",
+    "body": "Do not forward this text."
+  },
+  "sender": {
+    "id": 111
+  }
+}
