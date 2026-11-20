@@ -5,8 +5,6 @@ import http from 'node:http';
 import { REPO_ROOT } from '../scripts/lib/dataset.mjs';
 import {
   GOLDEN_VERSION,
-  FACT_TYPE_LABELS,
-  FACT_TYPES,
   GoldenError,
   applyEvidenceChunks,
   applyFactEvidence,
@@ -23,7 +21,6 @@ import {
   parseSuggestions,
   parseEvidenceDraftPolish,
   readState,
-  TOPICS,
   upsertEntity,
 } from '../scripts/lib/golden.mjs';
 
@@ -451,8 +448,12 @@ function stateBundle() {
     ...state,
     config: publicConfig(config),
     taxonomy: {
-      topics: TOPICS,
-      fact_types: FACT_TYPES.map((id) => ({ id, label: FACT_TYPE_LABELS[id] || id })),
+      topics: [...new Set(state.facts.map((row) => row.topic)[REDACTED])]
+        .map((name) => ({ id: '', name }))
+        .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
+      fact_types: [...new Set(state.facts.map((row) => row.fact_type)[REDACTED])]
+        .concat(state.facts.some((row) => row.fact_type) ? [] : ['general'])
+        .map((id) => ({ id, label: id })),
     },
     gaps: coverageGaps(state),
   };
@@ -705,7 +706,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, BIND_ADDRESS, () => {
   const config = loadConfig();
   console.log(`Golden dataset review: http://${BIND_ADDRESS}:${PORT}/`);
-  console.log(`Dataset: datasets/${VERSION}`);
-  console.log(`RAGFlow: ${config.ragflowBaseUrl ? hostOf(config.ragflowBaseUrl) : '未配置'} | LLM: ${config.llmModel || '未配置'}`);
-  console.log(`Config: ${config.configFile}`);
+  console.log('Golden data: separately provisioned directory');
+  console.log(`RAGFlow: ${config.ragflowBaseUrl ? '已配置' : '未配置'} | LLM: ${config.llmModel ? '已配置' : '未配置'}`);
 });

@@ -12,11 +12,11 @@ SOURCE_SHA="${GITHUB_SHA:-$(git -C "$SOURCE_DIR" rev-parse HEAD)}"
 DEPLOY_SHA="${INPUT_SHA:-$SOURCE_SHA}"
 APP_DIR="$HOME/apps/rag-eval-dataset"
 DATA_DIR="$HOME/apps/rag-eval-data"
-NODE_BIN="/path/to/project"
-PLIST="$HOME/Library/LaunchAgents/com.tornado404.rag-eval-dataset.plist"
-LABEL="com.tornado404.rag-eval-dataset"
-PORT="4183"
-GOLDEN_PORT="4183"
+NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+LABEL="${LAUNCHD_LABEL:-org.rag-eval-dataset}"
+PLIST="${PLIST_PATH:-$HOME/Library/LaunchAgents/$LABEL.plist}"
+PORT="${PORT:-4183}"
+GOLDEN_PORT="${GOLDEN_PORT:-$PORT}"
 CONFIG_DIR="$HOME/.config/rag-eval-dataset"
 EVAL_CONFIG="$CONFIG_DIR/eval.env"
 GOLDEN_CONFIG="$CONFIG_DIR/golden.env"
@@ -24,6 +24,10 @@ LAN_INTERFACE="$({ route -n get default 2>/dev/null || true; } | awk '$1 == "int
 LAN_IP=""
 if [[ -n "$LAN_INTERFACE" ]]; then
   LAN_IP="$(ipconfig getifaddr "$LAN_INTERFACE" 2>/dev/null || true)"
+fi
+if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+  echo "Node.js was not found; set NODE_BIN to an executable path" >&2
+  exit 1
 fi
 if [[ -z "$LAN_IP" ]]; then
   LAN_IP="$(ifconfig | awk '/inet / && $2 !~ /^127\./ && $2 !~ /^169\.254\./ {print $2; exit}')"
@@ -106,22 +110,16 @@ launchctl load "$PLIST"
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:$PORT/api/golden/state" >/dev/null 2>&1; then
     echo "DEPLOY_OK sha=$DEPLOY_SHA port=$PORT service=golden"
-    curl -fsS "http://127.0.0.1:$PORT/api/golden/state" | "$NODE_BIN" -e "let b='';process.stdin.on('data',d=>b+=d).on('end',()=>{const s=JSON.parse(b);console.log('STATE queries='+s.queries.length+' facts='+s.facts.length+' evidences='+s.evidences.length+' claims='+(s.query_claims||[]).length)})"
+    curl -fsS "http://127.0.0.1:$PORT/api/golden/state" | "$NODE_BIN" -e "let b='';process.stdin.on('data',d=>b+=d).on('end',()=>{JSON.parse(b);console.log('STATE_OK')})"
     if [[ -n "$LAN_IP" ]]; then
-      LAN_URL="http://${LAN_IP}:${PORT}/"
       if curl -fsS "http://${LAN_IP}:${PORT}/api/golden/state" >/dev/null 2>&1; then
-        echo "LAN_URL=$LAN_URL"
-        listener="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | tail -n +2 || true)"
-        echo "LISTENER=$listener"
-        if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-          printf '\n- LAN URL: `%s`\n' "$LAN_URL" >> "$GITHUB_STEP_SUMMARY"
-        fi
+        echo "LAN_HEALTH_CHECK_OK port=$PORT"
       else
-        echo "LAN_BIND_CHECK_FAILED interface=$LAN_INTERFACE ip=$LAN_IP port=$PORT"
+        echo "LAN_BIND_CHECK_FAILED port=$PORT"
         exit 1
       fi
     else
-      echo "LAN_IP_UNAVAILABLE port=$PORT"
+      echo "LAN_HEALTH_CHECK_UNAVAILABLE port=$PORT"
       exit 1
     fi
     exit 0

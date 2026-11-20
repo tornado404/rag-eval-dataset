@@ -1,36 +1,19 @@
 [REDACTED]
 [REDACTED]
-[REDACTED]
-import { REPO_ROOT } from './lib/dataset.mjs';
+import { DATASET_ROOT, datasetDir, readJsonl } from './lib/dataset.mjs';
 import { validateState } from './lib/golden.mjs';
 
-const REPO = REPO_ROOT;
-const GOLDEN_DIR = path.join(REPO, 'datasets', 'golden-v1');
-const HISTORY_REF = process.argv[2]
-  || process.env.GOLDEN_MIGRATION_SOURCE_REF
-  || '4bf4e2b62bb1f3c1eb58fba450068a4787e6b065';
-const V15_DIR = path.join(REPO, '.migrate-v15');
+const GOLDEN_DIR = path.resolve(process.env.GOLDEN_DATA_DIR || path.join(DATASET_ROOT, 'golden-v1'));
+const V15_DIR = datasetDir('v1.5');
 
 function assertEmptyTarget() {
   if (!fs.existsSync(GOLDEN_DIR)) return;
   const entries = fs.readdirSync(GOLDEN_DIR).filter((name) => name.endsWith('.jsonl'));
   if (!entries.length) return;
-  throw new Error(`refusing to overwrite existing golden dataset: ${GOLDEN_DIR}`);
-}
-
-function gitShow(file) {
-  const content = execFileSync('git', ['show', `${HISTORY_REF}:datasets/v1.5/${file}`], {
-    cwd: REPO,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return content.split(/\r?\n/).filter((line) => line.trim())[REDACTED]
+  throw new Error('refusing to overwrite existing golden dataset');
 }
 
 function loadV15() {
-  if (!fs.existsSync(V15_DIR)) fs.mkdirSync(V15_DIR, { recursive: true });
-  const existing = fs.readdirSync(V15_DIR).filter((name) => name.endsWith('.jsonl'));
-  if (existing.length) throw new Error(`refusing to overwrite existing migration cache: ${V15_DIR}`);
   const names = [
     'cases.jsonl',
     'facts.jsonl',
@@ -41,9 +24,9 @@ function loadV15() {
   ];
   const data = {};
   for (const name of names) {
-    const rows = gitShow(name);
-    fs.writeFileSync(path.join(V15_DIR, name), `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`);
-    data[name.replace(/\.jsonl$/, '')] = rows;
+    const file = path.join(V15_DIR, name);
+    if (!fs.existsSync(file)) throw new Error(`missing private dataset file ${name}; set DATASET_ROOT to its parent directory`);
+    data[name.replace(/\.jsonl$/, '')] = readJsonl(file);
   }
   return data;
 }
@@ -250,20 +233,13 @@ function writeState(state) {
     const content = rows.length ? `${rows.map((row) => JSON.stringify(row)).join('\n')}\n` : '';
     fs.writeFileSync(path.join(GOLDEN_DIR, `${name}.jsonl`), content);
   }
-  fs.rmSync(V15_DIR, { recursive: true, force: true });
 }
 
-const data = loadV15();
 assertEmptyTarget();
+const data = loadV15();
 const state = buildState(data);
 writeState(state);
 [REDACTED]
-  source_ref: HISTORY_REF,
-  queries: state.queries.length,
-  facts: state.facts.length,
-  evidences: state.evidences.length,
-  chunks: state.chunks.length,
-  query_facts: state.query_facts.length,
-  fact_evidence: state.fact_evidence.length,
-  evidence_chunks: state.evidence_chunks.length,
+  source_version: 'v1.5',
+  target_version: 'golden-v1',
 }, null, 2));

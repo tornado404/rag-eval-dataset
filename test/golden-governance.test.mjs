@@ -20,11 +20,11 @@ function fixtureState() {
   return {
     version: 'golden-test',
     queries: [
-      { query_id: 'Q0001', text: '问题一', notes: '场景 S001', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
-      { query_id: 'Q0002', text: '问题二', notes: '场景 S001', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
-      { query_id: 'Q0003', text: '问题三', notes: '场景 S002', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
-      { query_id: 'Q0004', text: '问题四', notes: '场景 S003；共享 required 资源', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
-      { query_id: 'Q0005', text: '问题五', notes: '场景 S004', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
+      { query_id: 'Q0001', text: 'synthetic question one', notes: 'group alpha', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
+      { query_id: 'Q0002', text: 'synthetic question two', notes: 'group alpha', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
+      { query_id: 'Q0003', text: 'synthetic question three', notes: 'group beta', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
+      { query_id: 'Q0004', text: 'synthetic question four', notes: 'group gamma; shared required item', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
+      { query_id: 'Q0005', text: 'synthetic question five', notes: 'group delta', status: 'draft', variant_type: 'canonical', expected_behavior: 'answer' },
     ],
     facts: [
       { fact_id: 'F001', statement: '事实一' },
@@ -87,7 +87,7 @@ function tempGoldenDir() {
 
 function writeContract(dir) {
   fs.mkdirSync(path.join(dir, 'governance'), { recursive: true });
-  fs.copyFileSync(path.join(ROOT, 'datasets/golden-v1/governance/contract.json'), path.join(dir, 'governance/contract.json'));
+  fs.copyFileSync(path.join(ROOT, 'schemas/golden-governance-contract.json'), path.join(dir, 'governance/contract.json'));
 }
 
 function splitByScenario(split, scenario) {

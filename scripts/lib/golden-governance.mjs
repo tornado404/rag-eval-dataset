@@ -134,8 +134,10 @@ function splitFile(version, id) {
 
 export function loadContract(version = GOLDEN_VERSION) {
   const file = contractFile(version);
-  if (!fs.existsSync(file)) return { ...DEFAULT_CONTRACT, dataset_id: version };
-  const contract = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const schemaFile = path.join(path.resolve(import.meta.dirname, '../..'), 'schemas', 'golden-governance-contract.json');
+  const source = fs.existsSync(file) ? file : schemaFile;
+  if (!fs.existsSync(source)) return { ...DEFAULT_CONTRACT, dataset_id: version };
+  const contract = JSON.parse(fs.readFileSync(source, 'utf8'));
   if (contract.schema_version !== CONTRACT_SCHEMA_VERSION) {
     throw new Error(`${file}: unsupported schema_version ${contract.schema_version}`);
   }

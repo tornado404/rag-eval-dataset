@@ -1,11 +1,4 @@
 const DECISION_ACTIONS = ['answer', 'clarify', '[REDACTED]', 'escalate_human', '[REDACTED]', 'refuse_domain', 'other'];
-const GOLD_DATASET_IDS = ['DS01', 'DS02', 'DS03'];
-const ONLINE_DATASET_TOTAL = 7;
-const MAPPED_EVIDENCE_COUNT = 479;
-const TOTAL_EVIDENCE_COUNT = 482;
-const SCORABLE_REQUIRED_FACT_COUNT = 394;
-const TOTAL_REQUIRED_FACT_COUNT = 394;
-const UNMAPPED_EVIDENCE_IDS = ['E00096', 'E00097', 'E00466'];
 
 function fraction(numerator, denominator) {
   return denominator ? numerator / denominator : null;
@@ -174,24 +167,6 @@ export function scoreRecallMetrics(records) {
   const rawSummary = qaRecallSummary(cohort, (row) => row.raw_ragflow);
   return {
     cohort_cases: cohort.length,
-    corpus_coverage: {
-      gold_datasets: {
-        covered: GOLD_DATASET_IDS.length,
-        total_online: ONLINE_DATASET_TOTAL,
-        ids: [...GOLD_DATASET_IDS],
-      },
-      evidence_rows: {
-        mapped: MAPPED_EVIDENCE_COUNT,
-        total: TOTAL_EVIDENCE_COUNT,
-        rate: MAPPED_EVIDENCE_COUNT / TOTAL_EVIDENCE_COUNT,
-      },
-      required_facts: {
-        scorable: SCORABLE_REQUIRED_FACT_COUNT,
-        total: TOTAL_REQUIRED_FACT_COUNT,
-        rate: SCORABLE_REQUIRED_FACT_COUNT / TOTAL_REQUIRED_FACT_COUNT,
-      },
-      unmapped_evidence_ids: [...UNMAPPED_EVIDENCE_IDS],
-    },
     retrieval_attempted: { cases: attempted, denominator: cohort.length, rate: fraction(attempted, cohort.length) },
     observation_coverage: { cases: observed, denominator: cohort.length, rate: fraction(observed, cohort.length) },
     chunk_observation_coverage: { cases: chunkObserved, denominator: cohort.length, rate: fraction(chunkObserved, cohort.length) },
@@ -286,10 +261,6 @@ export function compareReports(base, other) {
       candidate_recall_at_k: delta(base.summary?.ragflow_candidates_at_12?.recall_at_k, other.summary?.ragflow_candidates_at_12?.recall_at_k),
       final_gold_facts_hit: delta(base.summary?.final_grounding?.gold_facts_hit, other.summary?.final_grounding?.gold_facts_hit),
       final_cases_scored: delta(base.summary?.final_grounding?.cases_scored, other.summary?.final_grounding?.cases_scored),
-      mapped_evidence_rows: delta(
-        base.summary?.corpus_coverage?.evidence_rows?.mapped,
-        other.summary?.corpus_coverage?.evidence_rows?.mapped,
-      ),
     } : {
       decision_accuracy: null,
       decision_macro_f1: null,
@@ -297,7 +268,6 @@ export function compareReports(base, other) {
       candidate_recall_at_k: null,
       final_gold_facts_hit: null,
       final_cases_scored: null,
-      mapped_evidence_rows: null,
     },
   };
 }

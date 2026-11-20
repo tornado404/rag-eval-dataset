@@ -45,11 +45,8 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## M3 部署（${{ steps.ref.outputs.value }}）"
+            echo "## Private deployment"
             echo ''
-            echo '- runner: `m3-rag-eval-dataset`'
-            echo '- labels: `self-hosted,macOS,ARM64,office`'
-            echo '- listener: `127.0.0.1:4183`'
-            echo '- local URL: `http://127.0.0.1:4183/`'
-            echo '- LAN URL: emitted by the deploy health check below'
+            echo '- Target revision: `${{ steps.ref.outputs.value }}`'
+            echo '- Health check completed on the configured deployment runner.'
           } >> "$GITHUB_STEP_SUMMARY"
