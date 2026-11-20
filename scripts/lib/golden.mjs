@@ -74,7 +74,7 @@ const FIELDS = {
   queries: ['text', 'variant_type', 'parent_query_id', 'expected_behavior', 'status', 'notes'],
   facts: ['statement', 'topic', 'fact_type', 'importance', 'source_note', 'status'],
   evidences: ['title', 'excerpt', 'status'],
-  chunks: ['dataset_id', 'document_id', 'document_name', 'page', 'content', 'source'],
+  chunks: ['dataset_id', 'document_id', 'document_name', 'page', 'content', 'source', 'available', 'available_int'],
 };
 
 export class GoldenError extends Error {
@@ -93,6 +93,13 @@ function text(value) {
 function oneOf(value, allowed, fallback) {
   const normalized = text(value);
   return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function booleanOption(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  return value === undefined || value === null || value === '' ? null : false;
 }
 
 function unique(values) {
@@ -208,6 +215,11 @@ function normalizeChunk(row, input) {
   row.page = text(row.page);
   row.content = String(row.content ?? '');
   row.source = oneOf(row.source, ['ragflow', 'manual'], 'manual');
+  const available = booleanOption(row.available)
+    ?? booleanOption(row.available_int)
+    ?? true;
+  row.available = available;
+  row.available_int = available ? 1 : 0;
 }
 
 const NORMALIZERS = {
@@ -668,6 +680,32 @@ export function parseSuggestions(raw, existingTexts = []) {
     seen.add(key);
     return true;
   });
+}
+
+export function parseEvidenceDraftPolish(raw, fallback = {}) {
+  const source = String(raw ?? '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const start = source.indexOf('{');
+  const end = source.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new GoldenError('LLM 没有返回 JSON 对象', 502);
+
+  let payload;
+  try {
+    payload = JSON.parse(source.slice(start, end + 1));
+  } catch {
+    throw new GoldenError('LLM 返回的 JSON 无法解析', 502);
+  }
+
+  const result = {};
+  const title = text(payload?.title);
+  const excerpt = text(payload?.excerpt);
+  if (title) result.title = title.slice(0, 160);
+  if (excerpt) result.excerpt = excerpt;
+  if (!result.title && !result.excerpt) throw new GoldenError('LLM 没有返回可用的标题或摘录', 502);
+  return {
+    ...(text(fallback.title) && !result.title ? { title: text(fallback.title) } : {}),
+    ...(text(fallback.excerpt) && !result.excerpt ? { excerpt: text(fallback.excerpt) } : {}),
+    ...result,
+  };
 }
 
 export function coverageGaps(state) {

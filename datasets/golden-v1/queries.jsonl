@@ -4,7 +4,7 @@
 {"query_id":"Q00004","text":"家里老人已经在透析了，还能吃这个吗？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"review","notes":"v1.5 题目 C00004；场景 S002；难度 medium；优先级 P0"}
 {"query_id":"Q00005","text":"小孩子能吃吗？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"review","notes":"v1.5 题目 C00005；场景 S002；难度 easy；优先级 P0"}
 {"query_id":"Q00006","text":"这个怎么吃？一天吃几次、什么时候吃？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"review","notes":"v1.5 题目 C00006；场景 S003；难度 easy；优先级 P0"}
-{"query_id":"Q00007","text":"胶囊太大吞不下，能打开或者咬开吃吗？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"review","notes":"v1.5 题目 C00007；场景 S003；难度 medium；优先级 P0"}
+{"query_id":"Q00007","text":"胶囊太大吞不下，能打开或者咬开吃吗？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"approved","notes":"v1.5 题目 C00007；场景 S003；难度 medium；优先级 P0","updated_at":"2026-11-19T13:36:39.996Z"}
 {"query_id":"Q00008","text":"每天吃几粒？指标补到正常了还要天天吃吗？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"review","notes":"v1.5 题目 C00008；场景 S003；难度 medium；优先级 P0"}
 {"query_id":"Q00009","text":"开始吃之前要先查血钙吗？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"review","notes":"v1.5 题目 C00009；场景 S004；难度 easy；优先级 P0"}
 {"query_id":"Q00010","text":"吃这个会不会血钙升高？真高了怎么办？","variant_type":"canonical","parent_query_id":"","expected_behavior":"answer","status":"review","notes":"v1.5 题目 C00010；场景 S004；难度 hard；优先级 P0"}

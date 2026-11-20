@@ -21,6 +21,7 @@ import {
   evidenceInventory,
   mutate,
   parseSuggestions,
+  parseEvidenceDraftPolish,
   readState,
   TOPICS,
   upsertEntity,
@@ -219,6 +220,22 @@ function pageOf(chunk) {
   return '';
 }
 
+function booleanOption(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  return value === undefined || value === null || value === '' ? null : false;
+}
+
+function chunkAvailability(chunk, fallback = {}) {
+  const available = booleanOption(chunk?.available)
+    ?? booleanOption(chunk?.available_int)
+    ?? booleanOption(fallback.available)
+    ?? booleanOption(fallback.available_int)
+    ?? true;
+  return { available, available_int: available ? 1 : 0 };
+}
+
 function normalizeChunk(chunk, fallback = {}) {
   const documentId = firstString(chunk, ['document_id', 'doc_id']) || fallback.document_id || '';
   const documentName = firstString(chunk, ['docnm_kwd', 'document_name', 'doc_name']) || fallback.document_name || '';
@@ -231,6 +248,7 @@ function normalizeChunk(chunk, fallback = {}) {
     document_name: documentName,
     page: pageOf(chunk) || fallback.page || '',
     source: 'ragflow',
+    ...chunkAvailability(chunk, fallback),
   };
 }
 
@@ -299,6 +317,36 @@ async function ragflowDocumentChunks(config, { datasetId, documentId, page = 1, 
   };
 }
 
+async function ragflowSetChunkAvailability(config, { datasetId, documentId, chunkIds, available }) {
+  const dataset = stringOf(datasetId);
+  const document = stringOf(documentId);
+  if (!dataset || !document) throw new GoldenError('缺少 dataset_id 或 document_id', 400);
+  if (typeof available !== 'boolean') throw new GoldenError('available 必须是布尔值', 400);
+  if (!Array.isArray(chunkIds) || !chunkIds.length || chunkIds.some((id) => !stringOf(id))) {
+    throw new GoldenError('chunk_ids 必须是非空字符串数组', 400);
+  }
+  requireRagflow(config);
+  const ids = chunkIds.map((id) => stringOf(id));
+  const payload = await requestJson(
+    ragflowUrl(config, `/datasets/${encodeURIComponent(dataset)}/documents/${encodeURIComponent(document)}/chunks`),
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${config.ragflowApiKey}` },
+      body: { chunk_ids: ids, available_int: available ? 1 : 0 },
+      label: 'RAGFlow Chunk 可用性',
+    },
+  );
+  if (Number(payload?.code) !== 0) {
+    throw new GoldenError(`RAGFlow 更新 Chunk 可用性失败：${payload?.message || payload?.code}`, 502);
+  }
+  return {
+    dataset_id: dataset,
+    document_id: document,
+    chunk_ids: ids,
+    available,
+  };
+}
+
 function chatUrl(base) {
   const trimmed = base.replace(/\/+$/, '');
   if (/\/chat\/completions$/.test(trimmed)) return trimmed;
@@ -347,6 +395,53 @@ async function suggestQueries(config, { facts, seedText, count, existingTexts })
   const content = payload?.choices?.[0]?.message?.content;
   if (!content) throw new GoldenError('LLM 未返回内容', 502);
   return parseSuggestions(content, existingTexts);
+}
+
+function evidencePolishPrompt({ fact, title, excerpt, chunks }) {
+  const sourceLines = chunks.map((chunk, index) => [
+    `[${index + 1}] ${chunk.chunk_id}`,
+    chunk.document_name || chunk.document_id || '未命名文档',
+    String(chunk.content || '').slice(0, 4000),
+  ].join('\n')).join('\n\n');
+  return [
+    '你是 RAG 评测数据集的 Evidence 标注助手。润色人工填写的标题和摘录，让它们准确支撑目标 Fact。',
+    '要求：',
+    '1. 只能使用来源原文中的事实，不得新增数值、结论、适应症、禁忌或来源没有的信息。',
+    '2. 保留所有数字、单位、对象、条件、时间、否定和限定语义；不确定时保持原文。',
+    '3. 摘录优先整理人工已填文本，可修正语病、去除重复和无关句；来源原文用于核对。',
+    '4. 标题概括一条可核验事实，不超过 60 个中文字。',
+    '5. 只输出 JSON 对象，格式：{"title":"...","excerpt":"..."}。',
+    '',
+    `目标 Fact：${fact.fact_id} ${fact.statement}`,
+    `人工标题：${title || '（空）'}`,
+    `人工摘录：${excerpt || '（空）'}`,
+    '',
+    '来源 Chunk：',
+    sourceLines || '（无）',
+  ].join('\n');
+}
+
+async function polishEvidenceDraft(config, input) {
+  if (!config.llmBaseUrl || !config.llmModel) {
+    throw new GoldenError('LLM 未配置，请在 golden.env 填写 LLM_BASE_URL / LLM_MODEL', 503);
+  }
+  const payload = await requestJson(chatUrl(config.llmBaseUrl), {
+    method: 'POST',
+    headers: config.llmApiKey ? { Authorization: `Bearer ${config.llmApiKey}` } : {},
+    body: {
+      model: config.llmModel,
+      temperature: 0.2,
+      max_tokens: 1600,
+      messages: [
+        { role: 'system', content: '你是严谨的 RAG 评测数据标注助手，只输出 JSON。' },
+        { role: 'user', content: evidencePolishPrompt(input) },
+      ],
+    },
+    label: 'LLM',
+  });
+  const content = payload?.choices?.[0]?.message?.content;
+  if (!content) throw new GoldenError('LLM 未返回内容', 502);
+  return parseEvidenceDraftPolish(content, { title: input.title, excerpt: input.excerpt });
 }
 
 function stateBundle() {
@@ -455,6 +550,29 @@ async function handle(req, res, url) {
     return send(res, 200, { candidates, model: config.llmModel, facts: facts.map((fact) => fact.fact_id) });
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/golden/evidence/polish') {
+    const body = await safeBody(req);
+    const state = readState(VERSION);
+    const factId = stringOf(body.fact_id);
+    const fact = state.facts.find((row) => row.fact_id === factId);
+    if (!fact) throw new GoldenError('目标 Fact 不存在', 400);
+    const title = stringOf(body.title);
+    const excerpt = stringOf(body.excerpt);
+    if (!title && !excerpt) throw new GoldenError('请先填写标题或摘录，再让 LLM 润色', 400);
+    const chunks = (Array.isArray(body.chunks) ? body.chunks : [])
+      .map((chunk) => ({
+        chunk_id: stringOf(chunk?.chunk_id),
+        document_name: stringOf(chunk?.document_name),
+        document_id: stringOf(chunk?.document_id),
+        content: stringOf(chunk?.content),
+      }))
+      .filter((chunk) => chunk.chunk_id && chunk.content)
+      .slice(0, 8);
+    const config = loadConfig();
+    const draft = await polishEvidenceDraft(config, { fact, title, excerpt, chunks });
+    return send(res, 200, { ...draft, model: config.llmModel });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/golden/queries/bulk') {
     const body = await safeBody(req);
     const result = mutate(VERSION, (state) => createQueryBundle(state, body));
@@ -481,6 +599,17 @@ async function handle(req, res, url) {
       page: Number(url.searchParams.get('page') || 1),
       pageSize: Number(url.searchParams.get('page_size') || 100),
       keywords: url.searchParams.get('keywords') || '',
+    });
+    return send(res, 200, result);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/golden/ragflow/chunks/availability') {
+    const body = await safeBody(req);
+    const result = await ragflowSetChunkAvailability(loadConfig(), {
+      datasetId: stringOf(body.dataset_id),
+      documentId: stringOf(body.document_id),
+      chunkIds: body.chunk_ids,
+      available: body.available,
     });
     return send(res, 200, result);
   }

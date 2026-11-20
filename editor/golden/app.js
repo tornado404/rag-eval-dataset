@@ -78,6 +78,7 @@ const ui = {
   querySearch: '',
   queryStatus: '',
   factSearch: '',
+  overviewSearch: '',
   factDraft: null,
   builder: emptyBuilder(),
   evidenceWorkspace: emptyEvidenceWorkspace(),
@@ -96,6 +97,8 @@ function emptyBuilder(overrides = {}) {
   return {
     seedText: '',
     expectedBehavior: 'answer',
+    factSearch: '',
+    candidateSearch: '',
     factLinks: [],
     candidates: [],
     model: '',
@@ -115,9 +118,17 @@ function emptyEvidenceWorkspace(overrides = {}) {
     factId: '',
     topK: 6,
     minSimilarity: 0.2,
+    mode: 'keyword',
+    keyword: '',
+    keywordInput: '',
+    candidateSearch: '',
     candidates: [],
+    candidatesByMode: { keyword: [], query: [] },
     selectedChunkIds: new Set(),
+    selectedChunks: new Map(),
+    selectionOrder: [],
     result: null,
+    keywordLoading: false,
     expandedChunkId: '',
     loading: false,
     error: '',
@@ -201,8 +212,99 @@ function evidenceFactOptions() {
 }
 
 function selectedAutoMatchCandidates() {
-  return ui.evidenceWorkspace.candidates
-    .filter((candidate) => ui.evidenceWorkspace.selectedChunkIds.has(candidate.chunk_id));
+  const workspace = ui.evidenceWorkspace;
+  return workspace.selectionOrder
+    .map((chunkId) => workspace.selectedChunks.get(chunkId))
+    .filter(Boolean);
+}
+
+function setEvidenceMode(mode) {
+  const workspace = ui.evidenceWorkspace;
+  const nextMode = mode === 'query' ? 'query' : 'keyword';
+  if (workspace.mode === nextMode) return;
+  workspace.candidatesByMode[workspace.mode] = workspace.candidates;
+  workspace.mode = nextMode;
+  workspace.candidates = workspace.candidatesByMode[nextMode] || [];
+  workspace.expandedChunkId = '';
+  workspace.error = '';
+  render();
+}
+
+function rememberEvidenceCandidates(candidates) {
+  const workspace = ui.evidenceWorkspace;
+  for (const candidate of candidates) {
+    if (workspace.selectedChunkIds.has(candidate.chunk_id)) workspace.selectedChunks.set(candidate.chunk_id, candidate);
+  }
+}
+
+function toggleEvidenceCandidate(chunkId) {
+  const workspace = ui.evidenceWorkspace;
+  const candidate = workspace.candidates.find((item) => item.chunk_id === chunkId)
+    || workspace.selectedChunks.get(chunkId);
+  if (!candidate) return;
+  if (workspace.selectedChunkIds.has(chunkId)) {
+    workspace.selectedChunkIds.delete(chunkId);
+    workspace.selectedChunks.delete(chunkId);
+    workspace.selectionOrder = workspace.selectionOrder.filter((id) => id !== chunkId);
+  } else {
+    workspace.selectedChunkIds.add(chunkId);
+    workspace.selectedChunks.set(chunkId, candidate);
+    workspace.selectionOrder.push(chunkId);
+  }
+  render();
+}
+
+function clearEvidenceCandidates() {
+  const workspace = ui.evidenceWorkspace;
+  workspace.selectedChunkIds.clear();
+  workspace.selectedChunks.clear();
+  workspace.selectionOrder = [];
+  render();
+}
+
+async function searchEvidenceKeywords() {
+  const workspace = ui.evidenceWorkspace;
+  const keyword = text(workspace.keywordInput);
+  if (!keyword) {
+    toast('请输入要查找的关键字', 'error');
+    return;
+  }
+  if (!ui.data?.config?.ragflow?.configured) {
+    toast('RAGFlow 未配置，请先在“上游服务配置”中检查', 'error');
+    return;
+  }
+  workspace.keywordLoading = true;
+  workspace.error = '';
+  render();
+  try {
+    const result = await api.searchRagflow({
+      query: keyword,
+      top_k: workspace.topK,
+      ...(workspace.datasetIds.length ? { dataset_ids: workspace.datasetIds } : {}),
+    });
+    const candidates = (Array.isArray(result?.chunks) ? result.chunks : [])
+      .map(normalizeCandidate)
+      .filter(Boolean);
+    workspace.keyword = keyword;
+    workspace.candidates = candidates;
+    workspace.candidatesByMode.keyword = candidates;
+    workspace.result = { retrieval: result, mode: 'keyword' };
+    rememberEvidenceCandidates(candidates);
+    workspace.expandedChunkId = '';
+    if (!candidates.length) workspace.error = '没有找到匹配 Chunk。可以改关键词、扩大数据集或提高 Top K。';
+    render();
+    if (candidates.length) toast(`“${keyword}”找到 ${candidates.length} 个 Chunk`, 'success');
+  } catch (error) {
+    workspace.candidates = [];
+    workspace.candidatesByMode.keyword = [];
+    workspace.result = null;
+    workspace.error = apiErrorText(error);
+    render();
+    toast(workspace.error, 'error');
+  } finally {
+    workspace.keywordLoading = false;
+    render();
+  }
 }
 
 function sendAutoMatchCandidatesToWorkbench() {
@@ -271,6 +373,25 @@ function localChunk(id) {
 
 function findChunk(id) {
   return localChunk(id) || ui.remoteChunks.find((chunk) => chunk.chunk_id === id) || null;
+}
+
+function findEvidenceCandidate(id) {
+  return ui.evidenceWorkspace.candidates.find((item) => item.chunk_id === id) || null;
+}
+
+function chunkIsAvailable(row) {
+  if (row?.available === true || row?.available === 1 || row?.available === '1') return true;
+  if (row?.available_int === true || row?.available_int === 1 || row?.available_int === '1') return true;
+  if (row?.available === false || row?.available === 0 || row?.available === '0') return false;
+  if (row?.available_int === false || row?.available_int === 0 || row?.available_int === '0') return false;
+  if (row?.available !== undefined || row?.available_int !== undefined) return false;
+  return true;
+}
+
+function availabilityButton(row, action) {
+  if (!row || text(row.source || 'ragflow') !== 'ragflow' || !text(row.dataset_id) || !text(row.document_id)) return '';
+  const label = chunkIsAvailable(row) ? '禁用' : '启用';
+  return `<button class="btn btn-sm btn-outline" data-action="${attr(action)}" data-id="${attr(row.chunk_id)}" type="button" title="${attr(label)} Chunk（调用 RAGFlow）" aria-label="${attr(label)} Chunk ${attr(row.chunk_id)}">${esc(label)}</button>`;
 }
 
 function queryFactLinks(queryId) {
@@ -383,6 +504,176 @@ function syncAssignmentSelectors(root, links) {
   if (summary) summary.textContent = queryFactCountSummary(links);
 }
 
+function factOptionVisible(row, link, state) {
+  const selected = Boolean(link);
+  if ((state.factFilter || 'all') === 'selected' && !selected) return false;
+  const term = normalizeText(state.factFilterText);
+  if (!term) return true;
+  const status = state.factStatuses?.[row.fact_id] || row.status;
+  return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${STATUS_LABELS[status] || status || ''} ${row.importance || 'P1'}`).includes(term);
+}
+
+function builderFactVisible(row, link) {
+  const term = normalizeText(ui.builder.factSearch);
+  if (!term) return true;
+  return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${factTypeLabel(row.fact_type)} ${STATUS_LABELS[row.status] || row.status || ''} ${row.importance || 'P1'}`).includes(term);
+}
+
+function builderCandidateVisible(candidate) {
+  const term = normalizeText(ui.builder.candidateSearch);
+  if (!term) return true;
+  const haystack = normalizeText(`${candidate.text || ''} ${candidate.rationale || ''} ${VARIANT_LABELS[candidate.variant_type] || ''} ${candidate.id || ''}`);
+  return haystack.includes(term);
+}
+
+function listSearchBox({ id, bind, value, placeholder, clearAction }) {
+  const modalClass = bind === 'query-facts-search' ? ' query-facts-search' : '';
+  return `<label class="search-box list-search-box${modalClass}">
+    ${icon('search')}
+    <input class="input" id="${attr(id)}" data-bind="${attr(bind)}" value="${attr(value)}" placeholder="${attr(placeholder)}" autocomplete="off">
+    <button class="search-clear" data-action="${attr(clearAction)}" type="button" aria-label="清空" ${value ? '' : 'hidden'}>${icon('x')}</button>
+  </label>`;
+}
+
+function syncQueryFactsModal(root, state) {
+  const links = state.factLinks || [];
+  const selectedIds = new Set(links.map((link) => link.fact_id));
+  const status = (factId) => state.factStatuses?.[factId];
+  let visibleCount = 0;
+  let totalCount = 0;
+  root.querySelectorAll('[data-fact-option]').forEach((option) => {
+    const factId = option.dataset.factOption;
+    const link = links.find((item) => item.fact_id === factId);
+    const row = fact(factId);
+    if (!row) return;
+    totalCount += 1;
+    const selected = Boolean(link);
+    const visible = factOptionVisible(row, link, state);
+    option.hidden = !visible;
+    if (visible) visibleCount += 1;
+    option.classList.toggle('selected', selected);
+    const button = option.querySelector('[data-action="toggle-modal-fact"]');
+    if (button) {
+      button.classList.toggle('checked', selected);
+      button.setAttribute('aria-label', `${selected ? '移除' : '添加'} ${factId}`);
+      button.innerHTML = selected ? icon('check') : '';
+    }
+    const assignment = option.querySelector('select[data-assignment-selector="true"]');
+    if (assignment) assignment.disabled = !selected;
+    const statusSelect = option.querySelector('[data-action="set-modal-fact-status"]');
+    if (statusSelect && status(factId)) statusSelect.value = status(factId);
+  });
+  syncAssignmentSelectors(root, links);
+  root.querySelectorAll('[data-action="filter-query-facts"]').forEach((button) => {
+    const active = button.dataset.filter === (state.factFilter || 'all');
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const searchInput = root.querySelector('[data-bind="query-facts-search"]');
+  if (searchInput && document.activeElement !== searchInput && searchInput.value !== (state.factFilterText || '')) {
+    searchInput.value = state.factFilterText || '';
+  }
+  const clearSearch = root.querySelector('[data-action="clear-query-facts-search"]');
+  if (clearSearch) clearSearch.hidden = !state.factFilterText;
+  const empty = root.querySelector('[data-query-facts-empty]');
+  if (empty) {
+    empty.hidden = visibleCount > 0;
+    const title = empty.querySelector('.empty-title');
+    const copy = empty.querySelector('.empty-copy');
+    const selectedView = (state.factFilter || 'all') === 'selected';
+    const textFiltered = Boolean(state.factFilterText);
+    if (title) title.textContent = textFiltered
+      ? '没有匹配的 Fact'
+      : selectedView ? '还没有勾选 Fact' : 'Fact 库为空';
+    if (copy) copy.textContent = textFiltered
+      ? '清空搜索词后再试。'
+      : selectedView
+        ? '切回“全部”勾选需要的 Fact，再回来编辑计分方式和状态。'
+        : '先手工录入至少一条事实，再关联到 Query。';
+  }
+  const selectedCount = root.querySelector('[data-query-facts-selected-count]');
+  if (selectedCount) selectedCount.textContent = String(selectedIds.size);
+  const totalCountElement = root.querySelector('[data-query-facts-total-count]');
+  if (totalCountElement) totalCountElement.textContent = String(totalCount);
+}
+
+function syncEvidenceCreateModal(root, state, { skipFields = false } = {}) {
+  if (!root || state?.type !== 'evidence-create' || state.stage !== 'editing') return;
+  const draft = state.draft || {};
+  const chunks = Array.isArray(draft.chunks) ? draft.chunks : [];
+  const saving = ui.busy;
+  const polishing = Boolean(state.polishing);
+  const locked = saving || polishing;
+  const targetFact = fact(draft.fact_id);
+
+  const saveError = root.querySelector('[data-evidence-save-error]');
+  if (saveError) {
+    saveError.hidden = !state.error;
+    const title = saveError.querySelector('.readiness-title');
+    const hint = saveError.querySelector('.hint');
+    if (title) title.innerHTML = `${icon('alert')} 保存失败`;
+    if (hint) hint.textContent = state.error ? text(state.error) : '';
+  }
+  const polishError = root.querySelector('[data-evidence-polish-error]');
+  if (polishError) {
+    polishError.hidden = !state.polishError;
+    const title = polishError.querySelector('.readiness-title');
+    const hint = polishError.querySelector('.hint');
+    if (title) title.innerHTML = `${icon('alert')} 润色失败`;
+    if (hint) hint.textContent = state.polishError ? `${state.polishError}；原草稿已保留。` : '';
+  }
+  const model = root.querySelector('[data-evidence-model]');
+  if (model) {
+    model.hidden = !state.model;
+    model.textContent = state.model ? `模型：${state.model}` : '';
+  }
+
+  const polishButton = root.querySelector('[data-action="polish-evidence-draft"]');
+  if (polishButton) {
+    polishButton.disabled = locked;
+    polishButton.innerHTML = polishing
+      ? '<span class="spinner"></span> LLM 润色中…'
+      : `${icon('sparkle')} LLM 润色草稿`;
+  }
+  if (!skipFields) {
+    const titleInput = root.querySelector('[data-bind="evidence-draft-title"]');
+    if (titleInput) {
+      titleInput.value = draft.title || '';
+      titleInput.disabled = locked;
+    }
+    const excerptInput = root.querySelector('[data-bind="evidence-draft-excerpt"]');
+    if (excerptInput) {
+      excerptInput.value = draft.excerpt || '';
+      excerptInput.disabled = locked;
+    }
+  }
+
+  const subtitle = root.querySelector('.modal-head p');
+  if (subtitle) subtitle.textContent = `为 ${draft.fact_id} 添加一条证据。所选 ${chunks.length} 个 Chunk 是这条 Evidence 的来源。`;
+  const sourceCount = root.querySelector('[data-evidence-source-count]');
+  if (sourceCount) sourceCount.textContent = `${chunks.length} 个`;
+  const sourceIds = new Set(chunks.map((chunk) => chunk.chunk_id));
+  root.querySelectorAll('[data-evidence-source]').forEach((card) => {
+    card.hidden = !sourceIds.has(card.dataset.evidenceSource);
+  });
+  const sourcesEmpty = root.querySelector('[data-evidence-sources-empty]');
+  if (sourcesEmpty) sourcesEmpty.hidden = chunks.length > 0;
+  const saveNote = root.querySelector('[data-evidence-save-note]');
+  if (saveNote) saveNote.textContent = `保存后创建 1 条草稿 Evidence，关联 ${draft.fact_id} 和 ${chunks.length} 个来源 Chunk。`;
+
+  root.querySelectorAll('[data-action="insert-evidence-source"], [data-action="remove-evidence-source"]')
+    .forEach((button) => { button.disabled = locked; });
+  root.querySelectorAll('.modal-foot [data-action="close-modal"]')
+    .forEach((button) => { button.disabled = locked; });
+  const saveButton = root.querySelector('[data-action="save-evidence-draft"]');
+  if (saveButton) {
+    saveButton.disabled = locked || !chunks.length || !targetFact;
+    saveButton.innerHTML = saving
+      ? '<span class="spinner light"></span> 保存中…'
+      : `${icon('check')} 保存 Evidence`;
+  }
+}
+
 function factEvidenceLink(factId) {
   return rows('fact_evidence').find((row) => row.fact_id === factId) || null;
 }
@@ -457,6 +748,13 @@ function similarityText(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return '—';
   return `${(number <= 1 ? number * 100 : number).toFixed(0)}%`;
+}
+
+function evidenceCandidateVisible(candidate) {
+  const term = normalizeText(ui.evidenceWorkspace.candidateSearch);
+  if (!term) return true;
+  const haystack = normalizeText(`${candidate.chunk_id || ''} ${candidate.document_name || ''} ${candidate.document_id || ''} ${candidate.content || ''} ${candidate.page || ''} ${candidate.dataset_id || ''} ${candidate.source || ''} ${similarityText(candidate.similarity)} ${(candidate.matched_fact_ids || []).join(' ')} ${(candidate.matched_evidence_ids || []).join(' ')}`);
+  return haystack.includes(term);
 }
 
 function pageLabel(page) {
@@ -1186,6 +1484,7 @@ function renderChunkCandidate(row) {
         <div class="candidate-body">${esc(compactExcerpt(row.content, 220))}</div>
         <div class="candidate-foot">
           <button class="chunk-ref" data-action="preview-chunk" data-id="${attr(row.chunk_id)}" type="button">${esc(row.chunk_id)}</button>
+          ${availabilityButton(row, chunkIsAvailable(row) ? 'set-chunk-unavailable' : 'set-chunk-available')}
           <span>${esc(pageLabel(row.page))}</span>
           ${row.document_id ? `<span class="truncate">${esc(row.document_id)}</span>` : ''}
         </div>
@@ -1477,7 +1776,9 @@ function renderBuilderCandidate(candidate) {
 
 function renderBuilder() {
   const selectedCount = ui.builder.candidates.filter((candidate) => candidate.selected && text(candidate.text)).length;
+  const candidateRows = ui.builder.candidates.filter(builderCandidateVisible);
   const selectedFacts = ui.builder.factLinks.map((link) => ({ ...link, fact: fact(link.fact_id) })).filter((link) => link.fact);
+  const factRows = rows('facts').filter((row) => builderFactVisible(row, builderFactLink(row.fact_id)));
   const builderAssignmentOptions = assignmentOptions(ui.builder.factLinks);
   const selectedText = selectedCount ? `${selectedCount} 条已选择` : '尚未选择候选';
   return `
@@ -1534,8 +1835,15 @@ function renderBuilder() {
           </div>
           <div class="panel-body">
             ${rows('facts').length ? `
+              ${listSearchBox({
+                id: 'builder-fact-search',
+                bind: 'builder-fact-search',
+                value: ui.builder.factSearch,
+                placeholder: '搜索 Fact ID、陈述、主题、状态、类型或重要性',
+                clearAction: 'clear-builder-fact-search',
+              })}
               <div class="fact-select-list">
-                ${rows('facts').map((row) => {
+                ${factRows.map((row) => {
                   const link = builderFactLink(row.fact_id);
                   return `
                     <div class="fact-option ${link ? 'selected' : ''}">
@@ -1555,7 +1863,11 @@ function renderBuilder() {
                       </div>
                     </div>`;
                 }).join('')}
-              </div>` : emptyState({
+              </div>
+              ${factRows.length ? '' : emptyState({
+                title: '没有匹配的 Fact',
+                copy: '清空搜索词后再试。',
+              })}` : emptyState({
                 title: '还没有 Fact',
                 copy: 'Fact 只能手工编造。先录入一条事实，再回来构造 Query。',
                 actions: `<button class="btn btn-primary" data-action="navigate" data-screen="facts" type="button">${icon('fact')} 去录入 Fact</button>`,
@@ -1574,11 +1886,25 @@ function renderBuilder() {
             <div class="ai-intro">
               候选必须先选 Fact。LLM 只负责改写问法，数字、单位、条件、否定语义以人工 Fact 为准。
             </div>
+            ${ui.builder.generating || !ui.builder.candidates.length ? '' : `
+              ${listSearchBox({
+                id: 'builder-candidate-search',
+                bind: 'builder-candidate-search',
+                value: ui.builder.candidateSearch,
+                placeholder: '搜索候选文本、理由、类型或 ID',
+                clearAction: 'clear-builder-candidate-search',
+              })}`}
             ${ui.builder.generating ? `
               <div class="generation-state"><span class="spinner"></span><span>正在生成主问与变体…</span></div>` : ui.builder.candidates.length ? `
-              <div class="suggestion-list">
-                ${ui.builder.candidates.map(renderBuilderCandidate).join('')}
-              </div>` : emptyState({
+              ${candidateRows.length ? `
+                <div class="suggestion-list">
+                  ${candidateRows.map(renderBuilderCandidate).join('')}
+                </div>` : emptyState({
+                  title: '没有匹配的候选',
+                  copy: '清空搜索词后再试。',
+                  iconName: 'sparkle',
+                  compact: true,
+                })}` : emptyState({
                 title: '还没有候选',
                 copy: ui.builder.factLinks.length
                   ? '点击生成候选，或直接在左侧主问草稿中手写后提交。'
@@ -1947,12 +2273,31 @@ function renderAttentionRow({ title, copy, action, id, screen, tone = '' }) {
     </div>`;
 }
 
+function overviewQueryVisible(row) {
+  const term = normalizeText(ui.overviewSearch);
+  if (!term) return true;
+  return normalizeText(`${row.query_id} ${row.text} ${row.notes || ''} ${row.parent_query_id || ''} ${STATUS_LABELS[row.status] || row.status || ''}`).includes(term);
+}
+
+function overviewFactVisible(row) {
+  const term = normalizeText(ui.overviewSearch);
+  if (!term) return true;
+  return normalizeText(`${row.fact_id} ${row.statement} ${row.topic || ''} ${factTypeLabel(row.fact_type)} ${STATUS_LABELS[row.status] || row.status || ''} ${row.importance || 'P1'}`).includes(term);
+}
+
+function overviewEvidenceVisible(row) {
+  const term = normalizeText(ui.overviewSearch);
+  if (!term) return true;
+  return normalizeText(`${row.evidence_id} ${row.title} ${row.excerpt || ''}`).includes(term);
+}
+
 function renderOverview() {
   const facts = rows('facts');
   const queries = rows('queries');
   const evidences = rows('evidences');
   const chunks = rows('chunks');
   const gaps = ui.data?.gaps || {};
+  const overviewSearchActive = Boolean(normalizeText(ui.overviewSearch));
   const approvedQueries = queries.filter((row) => row.status === 'approved').length;
   const factsWithEvidence = facts.filter((row) => evidenceIdsOfFact(row.fact_id).length > 0).length;
   const factsWithChunks = facts.filter((row) => chunkIdsOfFact(row.fact_id).length > 0).length;
@@ -1960,12 +2305,15 @@ function renderOverview() {
   const evidenceWithChunks = evidences.filter((row) => chunkIdsOfEvidence(row.evidence_id).length > 0).length;
   const attentionQueries = queries
     .filter((row) => row.status !== 'approved' || !queryFactLinks(row.query_id).some((link) => isScoringRequirement(link.requirement)))
+    .filter(overviewQueryVisible)
     .slice(0, 6);
   const attentionFacts = facts
     .filter((row) => !evidenceIdsOfFact(row.fact_id).length || !chunkIdsOfFact(row.fact_id).length)
+    .filter(overviewFactVisible)
     .slice(0, 6);
   const attentionEvidence = evidences
     .filter((row) => !chunkIdsOfEvidence(row.evidence_id).length)
+    .filter(overviewEvidenceVisible)
     .slice(0, 6);
 
   return `
@@ -1980,6 +2328,13 @@ function renderOverview() {
           <button class="btn btn-primary" data-action="navigate" data-screen="workbench" type="button">${icon('link')} 去审核证据</button>
         </div>
       </div>
+      ${listSearchBox({
+        id: 'overview-search',
+        bind: 'overview-search',
+        value: ui.overviewSearch,
+        placeholder: '搜索待处理 Query、Fact 和 Evidence',
+        clearAction: 'clear-overview-search',
+      })}
       <div class="kpi-band">
         <div class="kpi">
           <div class="kpi-label">Query</div>
@@ -2117,7 +2472,9 @@ function renderOverview() {
                     tone: row.status === 'review' ? 'risk' : 'info',
                   });
                 }).join('')}
-              </div>` : emptyState({ title: '没有待处理 Query', copy: '所有 Query 都已确认且配置了评分规则。', compact: true })}
+              </div>` : overviewSearchActive
+                ? emptyState({ title: '没有匹配的 Query', copy: '清空搜索词后再试。', compact: true })
+                : emptyState({ title: '没有待处理 Query', copy: '所有 Query 都已确认且配置了评分规则。', compact: true })}
           </section>
           <section class="panel">
             <div class="panel-head">
@@ -2148,7 +2505,11 @@ function renderOverview() {
                   screen: 'workbench',
                   tone: 'risk',
                 })).join('')}
-              </div>` : emptyState({ title: '证据链没有明显缺口', copy: 'Fact 的 Evidence 和 Chunk 覆盖已齐全。', compact: true })}
+              </div>` : overviewSearchActive
+                ? ''
+                : emptyState({ title: '证据链没有明显缺口', copy: 'Fact 的 Evidence 和 Chunk 覆盖已齐全。', compact: true })}
+              ${overviewSearchActive && !attentionFacts.length ? emptyState({ title: '没有匹配的 Fact', copy: '清空搜索词后再试。', compact: true }) : ''}
+              ${overviewSearchActive && !attentionEvidence.length ? emptyState({ title: '没有匹配的 Evidence', copy: '清空搜索词后再试。', compact: true }) : ''}
           </section>
         </div>
       </div>
@@ -2162,12 +2523,13 @@ function renderEvidenceLibrary() {
   const factOptions = evidenceFactOptions();
   const loading = workspace.loading;
   const datasetsConfigured = Boolean(ui.data?.config?.ragflow?.configured);
+  const selectedCandidates = selectedAutoMatchCandidates();
   return `
     <section class="screen evidence-screen">
       <div class="screen-head">
         <div>
           <h1>证据库</h1>
-          <p>先用 Query 与 Fact 定位候选 Chunk。勾选来源后，编辑一条 Evidence 摘录再保存。自动匹配只读取检索结果。</p>
+          <p>用关键字分别检索 A、B 线索，勾选后 Source Chunk 会保留在选区。也可以切到 Query 自动匹配；切换 Query 不会清空已选 Chunk。</p>
         </div>
         <div class="head-actions">
           <button class="btn btn-outline" data-action="refresh-evidence-inventory" type="button" ${loading ? 'disabled' : ''}>
@@ -2189,11 +2551,15 @@ function renderEvidenceLibrary() {
         <section class="panel">
           <div class="panel-head">
             <div class="panel-title">
-              <h2>自动匹配配置</h2>
+              <h2>Chunk 检索配置</h2>
               <small>${datasetOptions.length ? `${datasetOptions.length} 个数据集` : datasetsConfigured ? '配置尚未同步，请刷新' : '等待数据集配置'}</small>
             </div>
           </div>
           <div class="panel-body evidence-config-body">
+            <div class="evidence-mode-tabs" role="tablist" aria-label="Chunk 检索方式">
+              <button class="tab ${workspace.mode === 'keyword' ? 'active' : ''}" data-action="set-evidence-mode" data-mode="keyword" type="button" aria-pressed="${workspace.mode === 'keyword'}">${icon('search')} 关键字检索</button>
+              <button class="tab ${workspace.mode === 'query' ? 'active' : ''}" data-action="set-evidence-mode" data-mode="query" type="button" aria-pressed="${workspace.mode === 'query'}">${icon('sparkle')} Query 自动匹配</button>
+            </div>
             <label class="field">
               <span class="field-label">RAGFlow 数据集</span>
               <select class="select" data-action="set-evidence-datasets" multiple size="${Math.min(Math.max(datasetOptions.length, 3), 6)}" aria-label="选择 RAGFlow 数据集" ${datasetOptions.length ? '' : 'disabled'}>
@@ -2203,6 +2569,15 @@ function renderEvidenceLibrary() {
               </select>
               <span class="hint">不选择数据集时，由服务端使用当前配置的全部数据集。</span>
             </label>
+            ${workspace.mode === 'keyword' ? `
+            <label class="field">
+              <span class="field-label">检索关键字</span>
+              <input class="input" data-bind="evidence-keyword" value="${attr(workspace.keywordInput)}" placeholder="输入 A 关键词，找到后再查 B；已选 Chunk 会保留" maxlength="300">
+              <span class="hint">关键字直接送入 RAGFlow 检索。每次检索只替换候选列表，不会清空已选来源。</span>
+            </label>
+            <button class="btn btn-primary btn-block" data-action="search-evidence-keywords" type="button" ${workspace.keywordLoading || !datasetsConfigured ? 'disabled' : ''}>
+              ${workspace.keywordLoading ? '<span class="spinner light"></span>' : icon('search')} 查找 Chunk
+            </button>` : ''}
             <label class="field">
               <span class="field-label">Query</span>
               <select class="select" data-action="select-evidence-query" aria-label="选择 Query" ${queryOptions.length ? '' : 'disabled'}>
@@ -2239,9 +2614,10 @@ function renderEvidenceLibrary() {
                 </select>
               </label>
             </div>
+            ${workspace.mode === 'query' ? `
             <button class="btn btn-primary btn-block" data-action="run-evidence-auto-match" type="button" ${loading || !text(workspace.queryText) || !datasetsConfigured ? 'disabled' : ''}>
               ${loading ? '<span class="spinner light"></span>' : icon('sparkle')} 自动匹配 Chunk
-            </button>
+            </button>` : ''}
             ${datasetsConfigured ? '' : '<p class="error-text">RAGFlow 数据集未就绪，请先在“上游服务配置”中检查检索配置。</p>'}
             ${workspace.error ? `<p class="error-text">${esc(workspace.error)}</p>` : ''}
           </div>
@@ -2250,20 +2626,35 @@ function renderEvidenceLibrary() {
         <section class="panel evidence-candidate-panel">
           <div class="panel-head">
             <div class="panel-title">
-              <h2>候选 Chunk</h2>
-              <small>${workspace.result ? `${workspace.candidates.length} 条结果` : '等待自动匹配'}</small>
+              <h2>${workspace.mode === 'keyword' ? '关键字检索结果' : 'Query 匹配结果'}</h2>
+              <small>${workspace.result ? `${workspace.candidates.length} 条结果` : '等待检索'}</small>
             </div>
             ${workspace.result?.retrieval?.latency_ms ? `<span class="tiny muted">${esc(workspace.result.retrieval.latency_ms)} ms</span>` : ''}
           </div>
           <div class="panel-body">
             ${renderEvidenceCandidatesPanel()}
           </div>
+          <div class="evidence-selected-panel">
+            <div class="evidence-selected-head">
+              <strong>待构建 Evidence 的来源</strong>
+              <span class="tiny muted">${selectedCandidates.length} 个 Chunk · 跨检索和 Query 保留</span>
+            </div>
+            <div class="evidence-selected-list">
+              ${selectedCandidates.length ? selectedCandidates.map((candidate, index) => `
+                <span class="evidence-selected-chip">
+                  <b>${index + 1}</b>
+                  <span title="${attr(candidate.content)}">${esc(compactExcerpt(candidate.content || candidate.chunk_id, 52))}</span>
+                  <small>${esc(candidate.chunk_id)}</small>
+                  <button class="icon-btn" data-action="toggle-evidence-candidate" data-id="${attr(candidate.chunk_id)}" type="button" aria-label="移除 ${attr(candidate.chunk_id)}">${icon('x')}</button>
+                </span>`).join('') : '<span class="tiny faint">勾选检索结果后，来源会累积在这里。</span>'}
+            </div>
+          </div>
           <div class="panel-foot evidence-adopt-bar">
-            <span class="tiny muted">已选 ${workspace.selectedChunkIds.size} 个来源 Chunk</span>
+            <span class="tiny muted">已选 ${selectedCandidates.length} 个来源 Chunk</span>
             <span class="spacer"></span>
-            <button class="btn btn-ghost" data-action="clear-evidence-auto-selection" type="button" ${workspace.selectedChunkIds.size ? '' : 'disabled'}>清空选择</button>
-            <button class="btn btn-outline" data-action="send-auto-match-to-workbench" type="button" ${workspace.selectedChunkIds.size ? '' : 'disabled'}>${icon('chunk')} 送入工作台</button>
-            <button class="btn btn-success" data-action="create-evidence-draft" type="button" ${workspace.selectedChunkIds.size && fact(workspace.factId) && !ui.busy ? '' : 'disabled'}>
+            <button class="btn btn-ghost" data-action="clear-evidence-auto-selection" type="button" ${selectedCandidates.length ? '' : 'disabled'}>清空选择</button>
+            <button class="btn btn-outline" data-action="send-auto-match-to-workbench" type="button" ${selectedCandidates.length ? '' : 'disabled'}>${icon('chunk')} 送入工作台</button>
+            <button class="btn btn-success" data-action="create-evidence-draft" type="button" ${selectedCandidates.length && fact(workspace.factId) && !ui.busy ? '' : 'disabled'}>
               ${icon('plus')} 创建 Evidence 草稿
             </button>
           </div>
@@ -2283,31 +2674,50 @@ function renderEvidenceKpi(label, value, unit, note) {
 
 function renderEvidenceCandidatesPanel() {
   const workspace = ui.evidenceWorkspace;
-  if (workspace.loading) {
-    return `<div class="boot-screen">${'<span class="spinner"></span>'}<span>正在按当前 Query 匹配候选 Chunk…</span></div>`;
+  const loading = workspace.mode === 'keyword' ? workspace.keywordLoading : workspace.loading;
+  const candidateRows = workspace.candidates.filter(evidenceCandidateVisible);
+  if (loading) {
+    return `<div class="boot-screen">${'<span class="spinner"></span>'}<span>${workspace.mode === 'keyword' ? '正在按关键字查找 Chunk…' : '正在按当前 Query 匹配候选 Chunk…'}</span></div>`;
   }
   if (!workspace.candidates.length) {
     return emptyState({
-      title: workspace.error ? '自动匹配未成功' : workspace.result ? '没有符合条件的候选 Chunk' : '还没有匹配结果',
+      title: workspace.error ? (workspace.mode === 'keyword' ? '关键字检索未成功' : '自动匹配未成功') : workspace.result ? '没有符合条件的候选 Chunk' : '还没有匹配结果',
       copy: workspace.error
         ? '请检查上游检索配置与所选数据集，调整条件后重试。'
         : workspace.result
-          ? '可以提高 Top K、降低最低相似度，或修改 Query 文本后重试。'
-          : '选择 Query、Fact 与检索范围后，点击“自动匹配 Chunk”。匹配结果不会自动写入数据集。',
+          ? workspace.mode === 'keyword'
+            ? '换一个更短的关键字、扩大数据集，或提高 Top K 后重试。'
+            : '可以提高 Top K、降低最低相似度，或修改 Query 文本后重试。'
+          : workspace.mode === 'keyword'
+            ? '输入关键字后点击“查找 Chunk”。不同关键词的检索结果可以逐个勾选并累积。'
+            : '选择 Query、Fact 与检索范围后，点击“自动匹配 Chunk”。匹配结果不会自动写入数据集。',
       iconName: workspace.error ? 'alert' : 'chunk',
-      actions: workspace.result && !workspace.error
+      actions: workspace.result && !workspace.error && workspace.mode === 'query'
         ? `<button class="btn btn-sm btn-outline" data-action="run-evidence-auto-match" type="button">${icon('refresh')} 重新匹配</button>`
         : '',
     });
   }
   return `
     <div class="result-summary">
-      <span>${workspace.candidates.length} 个候选 Chunk · 已选择 ${workspace.selectedChunkIds.size} 个</span>
+      <span>${candidateRows.length} 个候选 Chunk · 已选择 ${workspace.selectedChunkIds.size} 个</span>
       <span>${esc(workspace.result?.retrieval?.dataset_ids?.join('、') || '默认数据集')}</span>
     </div>
-    <div class="result-list">
-      ${workspace.candidates.map((candidate) => renderEvidenceAutoCandidate(candidate)).join('')}
-    </div>`;
+    ${listSearchBox({
+      id: 'evidence-candidate-search',
+      bind: 'evidence-candidate-search',
+      value: workspace.candidateSearch,
+      placeholder: '搜索 Chunk ID、文档、内容、数据集、命中 ID 或相似度',
+      clearAction: 'clear-evidence-candidate-search',
+    })}
+    ${candidateRows.length ? `
+      <div class="result-list">
+        ${candidateRows.map((candidate) => renderEvidenceAutoCandidate(candidate)).join('')}
+      </div>` : emptyState({
+        title: '没有匹配的候选 Chunk',
+        copy: '清空搜索词后再试。',
+        iconName: 'chunk',
+        compact: true,
+      })}`;
 }
 
 function renderEvidenceAutoCandidate(candidate) {
@@ -2325,6 +2735,7 @@ function renderEvidenceAutoCandidate(candidate) {
         <div class="candidate-body">${esc(compactExcerpt(candidate.content, 220))}</div>
         <div class="candidate-foot evidence-candidate-foot">
           <button class="chunk-ref" data-action="preview-evidence-candidate" data-id="${attr(candidate.chunk_id)}" type="button" title="展开完整原文">${esc(candidate.chunk_id)}</button>
+          ${availabilityButton(candidate, chunkIsAvailable(candidate) ? 'set-chunk-unavailable' : 'set-chunk-available')}
           <span>${icon('doc')} ${esc(pageLabel(candidate.page))}</span>
           ${candidate.dataset_id ? `<span class="mono">${esc(candidate.dataset_id)}</span>` : ''}
           ${candidate.matched_fact_ids.length ? `<span>命中 Fact：${candidate.matched_fact_ids.map((id) => esc(id)).join('、')}</span>` : '<span class="faint">未标注命中 Fact</span>'}
@@ -2355,6 +2766,8 @@ function modalShell({ title, subtitle = '', body, footer = '', wide = false }) {
 function renderQueryFactsModal(modalState) {
   const factLinks = modalState.factLinks || [];
   const selected = new Map(factLinks.map((link) => [link.fact_id, link]));
+  const factFilter = modalState.factFilter === 'selected' ? 'selected' : 'all';
+  const factFilterText = modalState.factFilterText || '';
   const factAssignmentOptions = assignmentOptions(factLinks);
   const factStatuses = modalState.factStatuses || {};
   return modalShell({
@@ -2362,12 +2775,28 @@ function renderQueryFactsModal(modalState) {
     subtitle: '必需单项各计 1 项；必需组内每条都要命中，各自计分；每个任选组计 1 项，命中组内任一 Fact 即满足。可选只作上下文，禁止不得作答依据。修改审核状态会影响所有引用该 Fact 的 Query。',
     body: rows('facts').length ? `
       <div class="query-facts-summary" data-query-facts-summary>${esc(queryFactCountSummary(factLinks))}</div>
+      <div class="query-facts-filters">
+        <button class="tab ${factFilter === 'all' ? 'active' : ''}" data-action="filter-query-facts" data-filter="all" type="button" aria-pressed="${factFilter === 'all'}">
+          ${icon('fact')} 全部 <span class="tab-count" data-query-facts-total-count>${rows('facts').length}</span>
+        </button>
+        <button class="tab ${factFilter === 'selected' ? 'active' : ''}" data-action="filter-query-facts" data-filter="selected" type="button" aria-pressed="${factFilter === 'selected'}">
+          ${icon('check')} 已勾选 <span class="tab-count" data-query-facts-selected-count>${factLinks.length}</span>
+        </button>
+        ${listSearchBox({
+          id: 'query-facts-search',
+          bind: 'query-facts-search',
+          value: factFilterText,
+          placeholder: '搜索 Fact ID、陈述、主题、状态或重要性',
+          clearAction: 'clear-query-facts-search',
+        })}
+      </div>
       <div class="fact-select-list">
         ${rows('facts').map((row) => {
           const link = selected.get(row.fact_id);
           const requirement = link?.requirement;
+          const visible = factOptionVisible(row, link, modalState);
           return `
-            <div class="fact-option ${requirement ? 'selected' : ''}">
+            <div class="fact-option ${requirement ? 'selected' : ''}" data-fact-option="${attr(row.fact_id)}" ${visible ? '' : 'hidden'}>
               <button class="check ${requirement ? 'checked' : ''}" data-action="toggle-modal-fact" data-id="${attr(row.fact_id)}" type="button" aria-label="${requirement ? '移除' : '添加'} ${attr(row.fact_id)}">${requirement ? icon('check') : ''}</button>
               <div class="fact-option-main">
                 <div class="fact-option-head">
@@ -2393,6 +2822,12 @@ function renderQueryFactsModal(modalState) {
               </div>
             </div>`;
         }).join('')}
+        <div class="query-facts-empty" data-query-facts-empty ${rows('facts').some((row) => factOptionVisible(row, selected.get(row.fact_id), modalState)) ? 'hidden' : ''}>
+          ${emptyState({
+            title: factFilterText ? '没有匹配的 Fact' : factFilter === 'selected' ? '还没有勾选 Fact' : 'Fact 库为空',
+            copy: factFilterText ? '清空搜索词后再试。' : factFilter === 'selected' ? '切回“全部”勾选需要的 Fact，再回来编辑计分方式和状态。' : '先手工录入至少一条事实，再关联到 Query。',
+          })}
+        </div>
       </div>` : emptyState({
       title: 'Fact 库为空',
       copy: '先手工录入至少一条事实，再关联到 Query。',
@@ -2561,11 +2996,12 @@ function renderEvidenceCreateModal(modalState) {
   const targetFact = fact(draft.fact_id);
   const chunks = Array.isArray(draft.chunks) ? draft.chunks : [];
   const saving = ui.busy;
+  const polishing = Boolean(modalState.polishing);
   return modalShell({
     title: '创建 Evidence 草稿',
     subtitle: `为 ${draft.fact_id} 添加一条证据。所选 ${chunks.length} 个 Chunk 是这条 Evidence 的来源。`,
     body: `
-      ${modalState.error ? `<div class="readiness-box blocked evidence-draft-error"><div class="readiness-title">${icon('alert')} 保存失败</div><p class="hint">${esc(modalState.error)}</p></div>` : ''}
+      <div class="readiness-box blocked evidence-draft-error" data-evidence-save-error ${modalState.error ? '' : 'hidden'}><div class="readiness-title">${icon('alert')} 保存失败</div><p class="hint">${esc(modalState.error)}</p></div>
       <div class="evidence-draft-fact">
         <span class="eyebrow">目标 Fact</span>
         <strong>${esc(targetFact?.fact_id || draft.fact_id)}</strong>
@@ -2573,16 +3009,24 @@ function renderEvidenceCreateModal(modalState) {
       </div>
       <div class="evidence-draft-grid">
         <div class="evidence-draft-editor">
+          <div class="evidence-draft-polish-bar">
+            <button class="btn btn-sm btn-outline" data-action="polish-evidence-draft" type="button" ${saving || polishing ? 'disabled' : ''}>
+              ${polishing ? '<span class="spinner"></span> LLM 润色中…' : `${icon('sparkle')} LLM 润色草稿`}
+            </button>
+            <span class="hint">仅根据已填标题、摘录和来源 Chunk 润色，结果需要人工复核后保存。</span>
+          </div>
+          <div class="readiness-box blocked evidence-draft-error" data-evidence-polish-error ${modalState.polishError ? '' : 'hidden'}><div class="readiness-title">${icon('alert')} 润色失败</div><p class="hint">${esc(modalState.polishError)}；原草稿已保留。</p></div>
+          <div class="evidence-draft-model" data-evidence-model ${modalState.model ? '' : 'hidden'}>模型：${esc(modalState.model)}</div>
           <label class="field">
             <span class="field-label">Evidence 标题 <span class="req">*</span></span>
-            <input class="input" id="evidence-draft-title" data-bind="evidence-draft-title" value="${attr(draft.title)}" placeholder="概括这条证据" maxlength="160" ${saving ? 'disabled' : ''}>
+            <input class="input" id="evidence-draft-title" data-bind="evidence-draft-title" value="${attr(draft.title)}" placeholder="概括这条证据" maxlength="160" ${saving || polishing ? 'disabled' : ''}>
           </label>
           <label class="field">
             <span class="field-label">Evidence 摘录 <span class="req">*</span></span>
-            <textarea class="textarea evidence-draft-excerpt-input" id="evidence-draft-excerpt" data-bind="evidence-draft-excerpt" rows="10" placeholder="摘录能支撑当前 Fact 的原文，保留数字、单位、条件和否定语义" ${saving ? 'disabled' : ''}>${esc(draft.excerpt)}</textarea>
+            <textarea class="textarea evidence-draft-excerpt-input" id="evidence-draft-excerpt" data-bind="evidence-draft-excerpt" rows="10" placeholder="摘录能支撑当前 Fact 的原文，保留数字、单位、条件和否定语义" ${saving || polishing ? 'disabled' : ''}>${esc(draft.excerpt)}</textarea>
             <span class="hint">一条 Evidence 只记录一项可核验事实；不同事实分开建条目。只有共同支撑当前 Fact 的 Chunk 才放在一起。来源不会自动拼接，可逐条插入原文后编辑。</span>
           </label>
-          <div class="evidence-draft-save-note">
+          <div class="evidence-draft-save-note" data-evidence-save-note>
             保存后创建 1 条草稿 Evidence，关联 ${esc(draft.fact_id)} 和 ${chunks.length} 个来源 Chunk。
           </div>
         </div>
@@ -2592,32 +3036,33 @@ function renderEvidenceCreateModal(modalState) {
               <h3>来源 Chunk</h3>
               <p>核对每个来源，只保留共同支撑当前 Fact 的 Chunk。</p>
             </div>
-            <span class="chip plain">${chunks.length} 个</span>
+            <span class="chip plain" data-evidence-source-count>${chunks.length} 个</span>
           </div>
           ${chunks.length ? chunks.map((chunk) => `
-            <article class="evidence-draft-source">
+            <article class="evidence-draft-source" data-evidence-source="${attr(chunk.chunk_id)}">
               <div class="evidence-draft-source-head">
                 <div class="evidence-draft-source-meta">
                   <strong>${esc(chunk.document_name || chunk.document_id || '未命名文档')}</strong>
                   <span>${esc(chunk.chunk_id)} · ${esc(pageLabel(chunk.page))}</span>
                 </div>
                 <div class="evidence-draft-source-actions">
-                  <button class="btn btn-sm btn-outline" data-action="insert-evidence-source" data-id="${attr(chunk.chunk_id)}" type="button" ${saving ? 'disabled' : ''}>插入原文</button>
-                  <button class="icon-btn" data-action="remove-evidence-source" data-id="${attr(chunk.chunk_id)}" type="button" aria-label="移除来源 ${attr(chunk.chunk_id)}" ${saving ? 'disabled' : ''}>${icon('x')}</button>
+                  <button class="btn btn-sm btn-outline" data-action="insert-evidence-source" data-id="${attr(chunk.chunk_id)}" type="button" ${saving || polishing ? 'disabled' : ''}>插入原文</button>
+                  <button class="icon-btn" data-action="remove-evidence-source" data-id="${attr(chunk.chunk_id)}" type="button" aria-label="移除来源 ${attr(chunk.chunk_id)}" ${saving || polishing ? 'disabled' : ''}>${icon('x')}</button>
                 </div>
               </div>
               <pre class="evidence-draft-source-content">${esc(chunk.content)}</pre>
-            </article>`).join('') : emptyState({
+            </article>`).join('') : ''}
+          <div class="evidence-draft-sources-empty" data-evidence-sources-empty ${chunks.length ? 'hidden' : ''}>${emptyState({
               title: '还没有来源 Chunk',
               copy: '返回候选列表，至少选择一个 Chunk 后再保存。',
               compact: true,
               iconName: 'chunk',
-            })}
+            })}</div>
         </section>
       </div>`,
     footer: `
-      <button class="btn btn-ghost" data-action="close-modal" type="button" ${saving ? 'disabled' : ''}>返回候选 Chunk</button>
-      <button class="btn btn-primary" data-action="save-evidence-draft" type="button" ${saving || !chunks.length || !targetFact ? 'disabled' : ''}>
+      <button class="btn btn-ghost" data-action="close-modal" type="button" ${saving || polishing ? 'disabled' : ''}>返回候选 Chunk</button>
+      <button class="btn btn-primary" data-action="save-evidence-draft" type="button" ${saving || polishing || !chunks.length || !targetFact ? 'disabled' : ''}>
         ${saving ? '<span class="spinner light"></span> 保存中…' : `${icon('check')} 保存 Evidence`}
       </button>`,
     wide: true,
@@ -2743,6 +3188,57 @@ async function runMutation(task, { success = '', after = null } = {}) {
   }
 }
 
+async function setRagflowChunkAvailability(chunkId, available) {
+  const chunk = findChunk(chunkId) || findEvidenceCandidate(chunkId);
+  if (!chunk) {
+    toast('找不到目标 Chunk', 'error');
+    return;
+  }
+  const datasetId = text(chunk.dataset_id);
+  const documentId = text(chunk.document_id);
+  if (!datasetId || !documentId) {
+    toast('该 Chunk 缺少 dataset_id 或 document_id，无法更新 RAGFlow 可用性', 'error');
+    return;
+  }
+  const label = available ? '启用' : '禁用';
+  if (!window.confirm(`确认${label} Chunk ${chunk.chunk_id}？此操作会调用 RAGFlow 并改变检索可用性；${available ? '启用后该 Chunk 可重新参与 RAGFlow 检索' : '禁用后该 Chunk 在重新启用前不再参与 RAGFlow 检索'}。是否继续？`)) return;
+  if (ui.busy) return;
+  ui.busy = true;
+  render();
+  try {
+    await api.setRagflowChunkAvailability({
+      dataset_id: datasetId,
+      document_id: documentId,
+      chunk_ids: [chunk.chunk_id],
+      available,
+    });
+    const patchAvailability = (item) => item?.chunk_id === chunk.chunk_id
+      ? { ...item, available, available_int: available ? 1 : 0 }
+      : item;
+    ui.remoteChunks = ui.remoteChunks.map(patchAvailability);
+    if (ui.data?.chunks) ui.data.chunks = ui.data.chunks.map(patchAvailability);
+    for (const key of ['keyword', 'query']) {
+      const candidates = ui.evidenceWorkspace.candidatesByMode[key];
+      if (candidates) ui.evidenceWorkspace.candidatesByMode[key] = candidates.map(patchAvailability);
+    }
+    ui.evidenceWorkspace.candidates = ui.evidenceWorkspace.candidates.map(patchAvailability);
+    for (const [id, selected] of ui.evidenceWorkspace.selectedChunks) {
+      if (id === chunk.chunk_id) ui.evidenceWorkspace.selectedChunks.set(id, patchAvailability(selected));
+    }
+    if (localChunk(chunk.chunk_id)) {
+      const local = localChunk(chunk.chunk_id);
+      local.available = available;
+      local.available_int = available ? 1 : 0;
+    }
+    toast(`${label} Chunk ${chunk.chunk_id} 成功，已调用 RAGFlow`, 'success');
+  } catch (error) {
+    toast(apiErrorText(error), 'error');
+  } finally {
+    ui.busy = false;
+    render();
+  }
+}
+
 function setModal(modalState) {
   ui.modal = modalState;
   renderModal();
@@ -2812,6 +3308,8 @@ function openQueryFacts(queryId) {
   setModal({
     type: 'query-facts',
     queryId,
+    factFilter: 'all',
+    factFilterText: '',
     factLinks: queryFactLinks(queryId).map((link) => ({
       fact_id: link.fact_id,
       requirement: link.requirement,
@@ -2919,9 +3417,11 @@ function evidenceSelectQuery(queryId) {
   workspace.queryText = text(row.text);
   if (changed) {
     workspace.factId = factsOfQuery(queryId)[0]?.fact_id || '';
-    workspace.candidates = [];
-    workspace.selectedChunkIds.clear();
-    workspace.result = null;
+    workspace.candidatesByMode.query = [];
+    if (workspace.mode === 'query') {
+      workspace.candidates = [];
+      workspace.result = null;
+    }
     workspace.expandedChunkId = '';
     workspace.error = '';
   }
@@ -2989,6 +3489,9 @@ async function runEvidenceAutoMatch() {
     workspace.candidates = (Array.isArray(result?.candidates) ? result.candidates : [])
       .map(normalizeCandidate)
       .filter(Boolean);
+    workspace.candidatesByMode.query = workspace.candidates;
+    if (workspace.mode === 'query') workspace.candidates = workspace.candidates;
+    rememberEvidenceCandidates(workspace.candidates);
     workspace.result = result;
     workspace.inventory = result?.inventory || workspace.inventory;
     if (!fact(workspace.factId)) {
@@ -2997,7 +3500,6 @@ async function runEvidenceAutoMatch() {
         .find((id) => fact(id));
       if (linkedFact) workspace.factId = linkedFact;
     }
-    workspace.selectedChunkIds.clear();
     workspace.expandedChunkId = '';
     if (!workspace.candidates.length) workspace.error = '检索返回的候选缺少 Chunk ID，请调整检索条件后重试。';
     render();
@@ -3036,6 +3538,9 @@ function openEvidenceCreateDraft() {
     type: 'evidence-create',
     stage: 'editing',
     error: '',
+    polishError: '',
+    polishing: false,
+    model: '',
     draft: {
       fact_id: factId,
       title: defaultEvidenceTitle(candidates),
@@ -3050,7 +3555,7 @@ function openEvidenceCreateDraft() {
 function evidenceCreateDraftError(message) {
   if (ui.modal?.type !== 'evidence-create') return;
   ui.modal.error = message;
-  renderModal();
+  syncEvidenceCreateModal(modalRoot, ui.modal, { skipFields: true });
 }
 
 function insertEvidenceSource(chunkId) {
@@ -3061,7 +3566,8 @@ function insertEvidenceSource(chunkId) {
   const current = text(modalState.draft.excerpt);
   modalState.draft.excerpt = current ? `${current}\n\n${source.content}` : source.content;
   modalState.error = '';
-  renderModal();
+  modalState.polishError = '';
+  syncEvidenceCreateModal(modalRoot, modalState);
   const excerpt = modalRoot.querySelector('[data-bind="evidence-draft-excerpt"]');
   excerpt?.focus();
   if (excerpt && typeof excerpt.setSelectionRange === 'function') {
@@ -3076,7 +3582,8 @@ function removeEvidenceDraftSource(chunkId) {
   modalState.draft.chunks = modalState.draft.chunks.filter((chunk) => chunk.chunk_id !== chunkId);
   ui.evidenceWorkspace.selectedChunkIds.delete(chunkId);
   modalState.error = '';
-  renderModal();
+  modalState.polishError = '';
+  syncEvidenceCreateModal(modalRoot, modalState, { skipFields: true });
 }
 
 async function saveEvidenceCreateDraft() {
@@ -3105,6 +3612,8 @@ async function saveEvidenceCreateDraft() {
     chunks,
   };
   modalState.error = '';
+  modalState.polishError = '';
+  syncEvidenceCreateModal(modalRoot, modalState, { skipFields: true });
   const resultPromise = runMutation(() => api.createEvidence(body), {
     success: `已创建 1 条 Evidence，关联 ${chunkIds.length} 个来源 Chunk`,
     after: (saved) => {
@@ -3128,12 +3637,49 @@ async function saveEvidenceCreateDraft() {
   const result = await resultPromise;
   if (!result && ui.modal === modalState) {
     modalState.error = '保存没有完成。草稿仍保留，请检查提示后重试。';
-    renderModal();
+    syncEvidenceCreateModal(modalRoot, modalState, { skipFields: true });
     return;
   }
   if (result) {
     await loadEvidenceInventory({ silent: true });
     render();
+  }
+}
+
+async function polishEvidenceCreateDraft() {
+  const modalState = ui.modal;
+  if (modalState?.type !== 'evidence-create' || ui.busy || modalState.polishing) return;
+  const draft = modalState.draft;
+  if (!text(draft.title) && !text(draft.excerpt)) {
+    modalState.polishError = '请先填写标题或摘录。';
+    syncEvidenceCreateModal(modalRoot, modalState, { skipFields: true });
+    return;
+  }
+  modalState.polishing = true;
+  modalState.polishError = '';
+  syncEvidenceCreateModal(modalRoot, modalState, { skipFields: true });
+  try {
+    const result = await api.polishEvidenceDraft({
+      fact_id: draft.fact_id,
+      title: text(draft.title),
+      excerpt: text(draft.excerpt),
+      chunks: Array.isArray(draft.chunks) ? draft.chunks : [],
+    });
+    if (ui.modal !== modalState) return;
+    const nextTitle = text(result.title);
+    const nextExcerpt = text(result.excerpt);
+    if (nextTitle) modalState.draft.title = nextTitle;
+    if (nextExcerpt) modalState.draft.excerpt = nextExcerpt;
+    modalState.model = text(result.model);
+    toast('LLM 已润色草稿，请人工复核后保存', 'success');
+  } catch (error) {
+    if (ui.modal !== modalState) return;
+    modalState.polishError = apiErrorText(error);
+  } finally {
+    if (ui.modal === modalState) {
+      modalState.polishing = false;
+      syncEvidenceCreateModal(modalRoot, modalState);
+    }
   }
 }
 
@@ -3439,6 +3985,10 @@ function updateBoundValue(bind, element) {
     ui.evidenceWorkspace.queryText = value;
     return true;
   }
+  if (bind === 'evidence-keyword') {
+    ui.evidenceWorkspace.keywordInput = value;
+    return true;
+  }
   if (bind === 'query-list-search') {
     ui.querySearch = value;
     return true;
@@ -3447,15 +3997,38 @@ function updateBoundValue(bind, element) {
     ui.factSearch = value;
     return true;
   }
+  if (bind === 'builder-fact-search') {
+    ui.builder.factSearch = value;
+    return true;
+  }
+  if (bind === 'builder-candidate-search') {
+    ui.builder.candidateSearch = value;
+    return true;
+  }
+  if (bind === 'evidence-candidate-search') {
+    ui.evidenceWorkspace.candidateSearch = value;
+    return true;
+  }
+  if (bind === 'overview-search') {
+    ui.overviewSearch = value;
+    return true;
+  }
+  if (ui.modal?.type === 'query-facts' && bind === 'query-facts-search') {
+    ui.modal.factFilterText = value;
+    syncQueryFactsModal(modalRoot, ui.modal);
+    return false;
+  }
 
   if (ui.modal?.type === 'evidence-create' && bind === 'evidence-draft-title') {
     ui.modal.draft.title = value;
     ui.modal.error = '';
+    ui.modal.polishError = '';
     return true;
   }
   if (ui.modal?.type === 'evidence-create' && bind === 'evidence-draft-excerpt') {
     ui.modal.draft.excerpt = value;
     ui.modal.error = '';
+    ui.modal.polishError = '';
     return true;
   }
 
@@ -3516,7 +4089,10 @@ function handleInput(event) {
 function handleCompositionEnd(event) {
   const element = event.target.closest('[data-bind]');
   if (!element || element.tagName === 'SELECT') return;
-  if (updateBoundValue(element.dataset.bind, element)) renderWithFocus();
+  if (updateBoundValue(element.dataset.bind, element)) {
+    if (ui.modal?.type === 'query-facts' && element.dataset.bind === 'query-facts-search') return;
+    renderWithFocus();
+  }
 }
 
 function handleChange(event) {
@@ -3609,10 +4185,10 @@ async function dispatchClickAction(action, element) {
     evidenceSyncCurrentQuery();
     const result = await runEvidenceAutoMatch();
     const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
-    ui.evidenceWorkspace.selectedChunkIds = new Set(candidates
-      .map((candidate) => normalizeCandidate(candidate))
-      .filter(Boolean)
-      .map((candidate) => candidate.chunk_id));
+    const normalized = candidates.map((candidate) => normalizeCandidate(candidate)).filter(Boolean);
+    ui.evidenceWorkspace.selectedChunkIds = new Set(normalized.map((candidate) => candidate.chunk_id));
+    ui.evidenceWorkspace.selectedChunks = new Map(normalized.map((candidate) => [candidate.chunk_id, candidate]));
+    ui.evidenceWorkspace.selectionOrder = normalized.map((candidate) => candidate.chunk_id);
     sendAutoMatchCandidatesToWorkbench();
   } else if (action === 'show-auto-match-candidates') {
     navigate('evidence');
@@ -3621,18 +4197,14 @@ async function dispatchClickAction(action, element) {
     await loadEvidenceInventory();
   } else if (action === 'run-evidence-auto-match') {
     await runEvidenceAutoMatch();
+  } else if (action === 'search-evidence-keywords') {
+    await searchEvidenceKeywords();
+  } else if (action === 'set-evidence-mode') {
+    setEvidenceMode(element.dataset.mode);
   } else if (action === 'toggle-evidence-candidate') {
-    const candidate = ui.evidenceWorkspace.candidates.find((item) => item.chunk_id === element.dataset.id);
-    if (!candidate) return;
-    if (ui.evidenceWorkspace.selectedChunkIds.has(candidate.chunk_id)) {
-      ui.evidenceWorkspace.selectedChunkIds.delete(candidate.chunk_id);
-    } else {
-      ui.evidenceWorkspace.selectedChunkIds.add(candidate.chunk_id);
-    }
-    render();
+    toggleEvidenceCandidate(element.dataset.id || '');
   } else if (action === 'clear-evidence-auto-selection') {
-    ui.evidenceWorkspace.selectedChunkIds.clear();
-    render();
+    clearEvidenceCandidates();
   } else if (action === 'preview-evidence-candidate') {
     const candidate = ui.evidenceWorkspace.candidates.find((item) => item.chunk_id === element.dataset.id);
     if (!candidate) return;
@@ -3642,6 +4214,8 @@ async function dispatchClickAction(action, element) {
     render();
   } else if (action === 'create-evidence-draft') {
     openEvidenceCreateDraft();
+  } else if (action === 'polish-evidence-draft') {
+    await polishEvidenceCreateDraft();
   } else if (action === 'insert-evidence-source') {
     insertEvidenceSource(element.dataset.id || '');
   } else if (action === 'remove-evidence-source') {
@@ -3698,6 +4272,10 @@ async function dispatchClickAction(action, element) {
       ui.previewChunkId = chunkId;
       render();
     }
+  } else if (action === 'set-chunk-unavailable') {
+    await setRagflowChunkAvailability(element.dataset.id || '', false);
+  } else if (action === 'set-chunk-available') {
+    await setRagflowChunkAvailability(element.dataset.id || '', true);
   } else if (action === 'preview-evidence') {
     const evidenceId = element.dataset.id || '';
     if (ui.screen !== 'workbench') openEvidenceInWorkbench(evidenceId);
@@ -3778,6 +4356,25 @@ async function dispatchClickAction(action, element) {
     await saveQueryEdit();
   } else if (action === 'save-query-facts') {
     await saveQueryFacts();
+  } else if (action === 'filter-query-facts' && ui.modal?.type === 'query-facts') {
+    ui.modal.factFilter = element.dataset.filter === 'selected' ? 'selected' : 'all';
+    syncQueryFactsModal(modalRoot, ui.modal);
+  } else if (action === 'clear-query-facts-search' && ui.modal?.type === 'query-facts') {
+    ui.modal.factFilterText = '';
+    syncQueryFactsModal(modalRoot, ui.modal);
+    modalRoot.querySelector('[data-bind="query-facts-search"]')?.focus();
+  } else if (action === 'clear-builder-fact-search') {
+    ui.builder.factSearch = '';
+    renderWithFocus();
+  } else if (action === 'clear-builder-candidate-search') {
+    ui.builder.candidateSearch = '';
+    renderWithFocus();
+  } else if (action === 'clear-evidence-candidate-search') {
+    ui.evidenceWorkspace.candidateSearch = '';
+    renderWithFocus();
+  } else if (action === 'clear-overview-search') {
+    ui.overviewSearch = '';
+    renderWithFocus();
   } else if (action === 'toggle-modal-fact' && ui.modal?.type === 'query-facts') {
     const factId = element.dataset.id || '';
     if (ui.modal.factLinks.some((link) => link.fact_id === factId)) {
@@ -3785,7 +4382,7 @@ async function dispatchClickAction(action, element) {
     } else if (fact(factId)) {
       ui.modal.factLinks = [...ui.modal.factLinks, { fact_id: factId, requirement: 'required', group_id: '' }];
     }
-    renderModal();
+    syncQueryFactsModal(modalRoot, ui.modal);
   } else if (action === 'clear-query-search') {
     ui.querySearch = '';
     ui.queryStatus = '';
@@ -3855,6 +4452,7 @@ async function handleClick(event) {
     && event.target !== element) {
     return;
   }
+  if (action === 'set-chunk-available' || action === 'set-chunk-unavailable') event.stopPropagation();
   if (element.tagName === 'A') event.preventDefault();
   try {
     await dispatchClickAction(action, element);

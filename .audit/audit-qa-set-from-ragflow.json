@@ -1,0 +1,33 @@
+{
+  "report_rows": 163,
+  "report_questions_exact_match_local_cases": 163,
+  "report_questions_missing_local_case": 0,
+  "answer_outputs_exact_facts_concatenation": 149,
+  "answer_outputs_total": 149,
+  "dataset_ids_user_supplied": [
+    "65d643aade4011f1b1c6633075e8035e",
+    "34714b66de4011f1b1c6633075e8035e",
+    "3ac8e8d6dce511f1b1c6633075e8035e",
+    "73843970dc4811f182a97bfda9b37d41",
+    "7131ca20dc4811f182a97bfda9b37d41",
+    "6fc656c4dc4811f182a97bfda9b37d41",
+    "521f85b2dea211f1b1c6633075e8035e"
+  ],
+  "dataset_ids_backend_runtime": [
+    "6fc656c4dc4811f1b1c6633075e8035e",
+    "7131ca20dc4811f182a97bfda9b37d41",
+    "73843970dc4811f182a97bfda9b37d41"
+  ],
+  "dataset_ids_in_user_but_not_backend": [
+    "65d643aade4011f1b1c6633075e8035e",
+    "34714b66de4011f1b1c6633075e8035e",
+    "3ac8e8d6dce511f1b1c6633075e8035e",
+    "6fc656c4dc4811f182a97bfda9b37d41",
+    "521f85b2dea211f1b1c6633075e8035e"
+  ],
+  "dataset_ids_in_backend_and_user": [
+    "7131ca20dc4811f182a97bfda9b37d41",
+    "73843970dc4811f182a97bfda9b37d41"
+  ],
+  "exact_qa_answer_matches_in_exported_qa_dataset": 0
+}

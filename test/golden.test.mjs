@@ -14,6 +14,7 @@ import {
   deleteEntity,
   emptyState,
   evidenceInventory,
+  parseEvidenceDraftPolish,
   parseSuggestions,
   upsertEntity,
   validateState,
@@ -35,6 +36,19 @@ test('upsert creates ids, updates, and rejects duplicate query text', () => {
   upsertEntity(state, 'queries', { query_id: 'Q0002', text: '请告诉我 Rayaldee 是不是药物？', status: 'review' });
   assert.equal(state.queries[1].status, 'review');
   assert.equal(state.queries[1].text, '请告诉我 Rayaldee 是不是药物？');
+
+  assert.deepEqual(
+    upsertEntity(state, 'chunks', {
+      chunk_id: 'ck-a',
+      content: 'Rayaldee 是药品。',
+      source: 'ragflow',
+      dataset_id: 'ds-1',
+      document_id: 'doc-1',
+      available: false,
+      available_int: 0,
+    }).row.available,
+    false,
+  );
 
   const state2 = fixture();
   upsertEntity(state2, 'queries', { text: '请告诉我 Rayaldee 是不是药物？' });
@@ -193,6 +207,25 @@ test('parseSuggestions accepts bare JSON and fenced JSON', () => {
 test('parseSuggestions removes duplicates against existing queries', () => {
   const result = parseSuggestions('{"canonical":"它是药品？","variants":[{"text":"它是药品吗？","variant_type":"colloquial"}]}', ['它是药品']);
   assert.deepEqual(result, [{ text: '它是药品吗？', variant_type: 'colloquial', rationale: '' }]);
+});
+
+test('evidence draft polish keeps filled fields and fills only empty fields', () => {
+  assert.deepEqual(
+    parseEvidenceDraftPolish(
+      '```json\n{"title":"剂量说明","excerpt":"成人每日 30 μg。"}\n```',
+      { title: '旧标题', excerpt: '' },
+    ),
+    { title: '剂量说明', excerpt: '成人每日 30 μg。' },
+  );
+  assert.deepEqual(
+    parseEvidenceDraftPolish('{"excerpt":" rewritten "}', { title: '旧标题', excerpt: '原文' }),
+    { title: '旧标题', excerpt: 'rewritten' },
+  );
+});
+
+test('evidence draft polish rejects empty model output', () => {
+  assert.throws(() => parseEvidenceDraftPolish('not json', { title: '旧标题' }), GoldenError);
+  assert.throws(() => parseEvidenceDraftPolish('{"title":"","excerpt":""}'), GoldenError);
 });
 
 test('evidenceInventory counts m:n links and unlinked rows', () => {

@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-11-19T01:06:37.529Z",
+  "source_report": "/Users/mac/work/rag-eval-dataset-m3-deploy/reports/v1.5-ai-qa-recall-jev-expansion-partial.json",
+  "scope": "AI QA recall excluding DS01 script-library gold facts",
+  "cohort_cases": 149,
+  "required_fact_roles_all_149": {
+    "DS01": 89,
+    "DS02": 128,
+    "DS03": 174,
+    "MIXED": 3
+  },
+  "ai_qa_cases": 102,
+  "ai_qa_cases_scored": 101,
+  "ai_qa_facts_scored": 269,
+  "ai_qa_facts_hit": 0,
+  "ai_qa_micro_recall": 0,
+  "ai_qa_macro_recall": 0,
+  "ai_qa_case_hit_rate": 0,
+  "excluded_hits": [
+    {
+      "case_id": "C00077",
+      "fact_id": "F199",
+      "datasets": [
+        "DS01"
+      ],
+      "evidence_ids": [
+        "E00237"
+      ]
+    },
+    {
+      "case_id": "C00110",
+      "fact_id": "F201",
+      "datasets": [
+        "DS01"
+      ],
+      "evidence_ids": [
+        "E00238"
+      ]
+    },
+    {
+      "case_id": "C00110",
+      "fact_id": "F202",
+      "datasets": [
+        "DS01"
+      ],
+      "evidence_ids": [
+        "E00238"
+      ]
+    },
+    {
+      "case_id": "C00110",
+      "fact_id": "F193",
+      "datasets": [
+        "DS01"
+      ],
+      "evidence_ids": [
+        "E00005"
+      ]
+    },
+    {
+      "case_id": "C00110",
+      "fact_id": "F194",
+      "datasets": [
+        "DS01"
+      ],
+      "evidence_ids": [
+        "E00005"
+      ]
+    }
+  ],
+  "cases": []
+}

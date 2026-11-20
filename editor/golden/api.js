@@ -90,6 +90,10 @@ export function createEvidence(body) {
   return post('/api/golden/evidence', body);
 }
 
+export function polishEvidenceDraft(body) {
+  return post('/api/golden/evidence/polish', body);
+}
+
 export function draftQueries(body) {
   return post('/api/golden/queries/draft', body);
 }
@@ -110,6 +114,10 @@ export function getDocumentChunks(documentId, { datasetId = '', page = 1, pageSi
   if (datasetId) query.set('dataset_id', datasetId);
   if (keywords) query.set('keywords', keywords);
   return request(`/api/golden/ragflow/documents/${encodeURIComponent(documentId)}/chunks?${query}`);
+}
+
+export function setRagflowChunkAvailability(body) {
+  return post('/api/golden/ragflow/chunks/availability', body);
 }
 
 export function runRecall(body) {
