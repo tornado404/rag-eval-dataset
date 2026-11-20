@@ -91,10 +91,11 @@ export function linkFactEvidence(factId, evidenceIds, operator = 'OR') {
   });
 }
 
-export function linkEvidenceChunks(evidenceId, chunkIds) {
+export function linkEvidenceChunks(evidenceId, chunkIds, chunks = []) {
   return post('/api/golden/links/evidence-chunks', {
     evidence_id: evidenceId,
     chunk_ids: chunkIds,
+    chunks,
   });
 }
 

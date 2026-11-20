@@ -546,11 +546,18 @@ async function handle(req, res, url) {
 
   if (req.method === 'POST' && url.pathname === '/api/golden/links/evidence-chunks') {
     const body = await safeBody(req);
-    const result = mutate(VERSION, (state) => applyEvidenceChunks(
-      state,
-      String(body.evidence_id || ''),
-      body.chunk_ids || [],
-    ));
+    const result = mutate(VERSION, (state) => {
+      for (const chunk of Array.isArray(body.chunks) ? body.chunks : []) {
+        const chunkId = firstString(chunk, ['chunk_id', 'id']);
+        if (!chunkId || state.chunks.some((row) => row.chunk_id === chunkId)) continue;
+        upsertEntity(state, 'chunks', { ...chunk, chunk_id: chunkId });
+      }
+      return applyEvidenceChunks(
+        state,
+        String(body.evidence_id || ''),
+        body.chunk_ids || [],
+      );
+    });
     return send(res, 200, { link: result, state: stateBundle() });
   }
 
