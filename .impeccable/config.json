@@ -20,6 +20,15 @@
         ],
         "createdAt": "2026-11-17T06:00:41.899Z",
         "reason": "Agent: intentional data-table grid aligns with its rounded scroll container; th and td provide 10px 12px text inset, so the no-inset finding is a detector false positive"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "editor/golden/index.html"
+        ],
+        "createdAt": "2026-11-20T03:32:27.124Z",
+        "reason": "Assistant reviewed this markup and linked stylesheet. The markup has no shadow declarations; the zero-offset colored shadows are unblurred focus and selection rings, not decorative glow."
       }
     ]
   }
