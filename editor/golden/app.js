@@ -1,6 +1,6 @@
 import * as api from './api.js';
 
-const SCREENS = new Set(['workbench', 'builder', 'queries', 'facts', 'evidence', 'overview']);
+const SCREENS = new Set(['workbench', 'fact-review', 'builder', 'queries', 'facts', 'evidence', 'overview']);
 const VARIANT_LABELS = {
   canonical: '主问',
   paraphrase: '同义句',
@@ -12,6 +12,7 @@ const STATUS_LABELS = {
   review: '待复核',
   approved: '已确认',
 };
+const CLAIM_STORAGE_KEY = 'rag-eval-dataset.golden.reviewer';
 const BEHAVIOR_LABELS = {
   answer: '应回答',
   refuse: '应拒答',
@@ -47,6 +48,8 @@ const ICONS = {
   arrowDown: '<path d="M12 4v16M6 14l6 6 6-6"/>',
   chunk: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  user: '<circle cx="12" cy="8" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
 };
 
 const app = document.querySelector('.app-shell');
@@ -77,6 +80,9 @@ const ui = {
   relationOperator: 'OR',
   querySearch: '',
   queryStatus: '',
+  queryClaimFilter: '',
+  reviewerName: '',
+  queryReview: null,
   factSearch: '',
   overviewSearch: '',
   factDraft: null,
@@ -92,6 +98,38 @@ const ui = {
 
 let toastSequence = 0;
 let candidateSequence = 0;
+
+try {
+  ui.reviewerName = localStorage.getItem(CLAIM_STORAGE_KEY) || '';
+} catch {
+  ui.reviewerName = '';
+}
+
+function queryClaim(queryId) {
+  return (ui.data?.query_claims || []).find((claim) => claim.subject_id === queryId && claim.active);
+}
+
+function setReviewerName(name) {
+  ui.reviewerName = text(name).slice(0, 40);
+  try {
+    if (ui.reviewerName) localStorage.setItem(CLAIM_STORAGE_KEY, ui.reviewerName);
+    else localStorage.removeItem(CLAIM_STORAGE_KEY);
+  } catch {
+  }
+}
+
+function requireReviewerName() {
+  return promptReviewerName('');
+}
+
+function promptReviewerName(message) {
+  setModal({
+    type: 'reviewer-name',
+    value: '',
+    error: message || '请先填写你的显示名，其他人会据此看到领取状态。',
+  });
+  return '';
+}
 
 function emptyBuilder(overrides = {}) {
   return {
@@ -307,25 +345,30 @@ async function searchEvidenceKeywords() {
   }
 }
 
-function sendAutoMatchCandidatesToWorkbench() {
+function sendCandidatesToFactReview() {
   const workspace = ui.evidenceWorkspace;
   const candidates = selectedAutoMatchCandidates();
   if (!candidates.length) {
     toast('自动匹配没有返回可选择的候选 Chunk', 'info');
     return;
   }
+  if (!fact(workspace.factId)) {
+    toast('请先选择目标 Fact，再送入 Fact 审核台', 'info');
+    return;
+  }
+  selectFact(workspace.factId, { resetEditor: false });
   ui.centerTab = 'chunk';
   ui.selectedChunkIds = new Set([...ui.selectedChunkIds, ...candidates.map((candidate) => candidate.chunk_id)]);
   ui.previewChunkId = candidates[0].chunk_id;
   const navigation = currentNavigationParams();
-  navigate('workbench', {
+  navigate('fact-review', {
     query: navigation.query || ui.queryId,
-    fact: navigation.fact,
+    fact: workspace.factId,
     returnTo: navigation.returnTo || 'workbench',
     evidence: navigation.evidence,
   });
   render();
-  toast(`已将 ${ui.selectedChunkIds.size} 个 Chunk 放入工作台选区`, 'success');
+  toast(`已将 ${ui.selectedChunkIds.size} 个 Chunk 放入 Fact 审核台选区`, 'success');
 }
 
 function icon(name) {
@@ -491,7 +534,7 @@ function applyAssignment(links, factId, value) {
 }
 
 function assignmentSelect(link, links, action, factId, disabled = false, options = assignmentOptions(links)) {
-  return `<select class="select fact-assignment-select" data-assignment-selector="true" data-action="${attr(action)}" data-id="${attr(factId)}" aria-label="${attr(factId)} 的计分方式和分组" ${disabled ? 'disabled' : ''}>
+  return `<select class="select fact-assignment-select" id="${attr(action)}-${attr(factId)}" data-assignment-selector="true" data-action="${attr(action)}" data-id="${attr(factId)}" aria-label="${attr(factId)} 的计分方式和分组" ${disabled ? 'disabled' : ''}>
     ${options.map((option) => `<option value="${attr(option.value)}" ${assignmentValue(link) === option.value ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}
   </select>`;
 }
@@ -541,7 +584,7 @@ function listSearchBox({ id, bind, value, placeholder, clearAction }) {
   </label>`;
 }
 
-function syncQueryFactsModal(root, state) {
+function syncQueryFactsPanel(root, state) {
   const links = state.factLinks || [];
   const selectedIds = new Set(links.map((link) => link.fact_id));
   const status = (factId) => state.factStatuses?.[factId];
@@ -558,7 +601,7 @@ function syncQueryFactsModal(root, state) {
     option.hidden = !visible;
     if (visible) visibleCount += 1;
     option.classList.toggle('selected', selected);
-    const button = option.querySelector('[data-action="toggle-modal-fact"]');
+    const button = option.querySelector('[data-action="toggle-query-fact"]');
     if (button) {
       button.classList.toggle('checked', selected);
       button.setAttribute('aria-label', `${selected ? '移除' : '添加'} ${factId}`);
@@ -566,7 +609,7 @@ function syncQueryFactsModal(root, state) {
     }
     const assignment = option.querySelector('select[data-assignment-selector="true"]');
     if (assignment) assignment.disabled = !selected;
-    const statusSelect = option.querySelector('[data-action="set-modal-fact-status"]');
+    const statusSelect = option.querySelector('[data-action="set-query-fact-status"]');
     if (statusSelect && status(factId)) statusSelect.value = status(factId);
   });
   syncAssignmentSelectors(root, links);
@@ -870,7 +913,8 @@ function renderChrome() {
 }
 
 function renderView() {
-  if (ui.screen === 'builder') view.innerHTML = renderBuilder();
+  if (ui.screen === 'fact-review') view.innerHTML = renderFactReview();
+  else if (ui.screen === 'builder') view.innerHTML = renderBuilder();
   else if (ui.screen === 'queries') view.innerHTML = renderQueryList();
   else if (ui.screen === 'facts') view.innerHTML = renderFactLibrary();
   else if (ui.screen === 'evidence') view.innerHTML = renderEvidenceLibrary();
@@ -910,13 +954,18 @@ function extendReturnChain(params, screen) {
 function applyRoute() {
   const route = parseRoute();
   const params = route.params;
+  if (route.screen === 'workbench' && params.fact && !params.query) {
+    route.screen = 'fact-review';
+    if (params.returnTo === 'workbench') params.returnTo = 'facts';
+    history.replaceState(null, '', `#fact-review?${new URLSearchParams(params)}`);
+  }
   ui.screen = route.screen;
   const routedQuery = params.query || '';
   const routedFact = params.fact || '';
   const routedEvidence = params.evidence || '';
   if (routedQuery && routedQuery !== ui.queryId) selectQuery(routedQuery, { resetEvidence: true });
   if (routedFact && routedFact !== ui.factId) selectFact(routedFact, { resetEditor: true });
-  if (ui.screen === 'workbench') {
+  if (ui.screen === 'workbench' || ui.screen === 'fact-review') {
     if (routedEvidence) loadEvidenceDraft(routedEvidence, routedFact || ui.factId);
   } else if (ui.screen === 'facts') {
     if (routedFact) setFactDraft(routedFact);
@@ -966,10 +1015,12 @@ function applyServerState(next, { preserveEditor = true } = {}) {
   if (!query(ui.queryId)) {
     const firstRoot = rows('queries').find((row) => !row.parent_query_id) || rows('queries')[0];
     ui.queryId = firstRoot?.query_id || '';
-    ui.factId = '';
-    ui.editorDraft = null;
-    ui.previewEvidenceId = '';
-    ui.previewChunkId = '';
+    if (ui.screen === 'workbench') {
+      ui.factId = '';
+      ui.editorDraft = null;
+      ui.previewEvidenceId = '';
+      ui.previewChunkId = '';
+    }
   }
 
   if (ui.previewEvidenceId && !evidence(ui.previewEvidenceId)) ui.previewEvidenceId = '';
@@ -995,9 +1046,11 @@ function ensureContext() {
     ui.queryId = firstRoot?.query_id || '';
   }
 
-  const linkedFacts = factsOfQuery(ui.queryId);
-  if (!ui.factId || !linkedFacts.some((item) => item.fact_id === ui.factId)) {
-    ui.factId = linkedFacts[0]?.fact_id || '';
+  if (ui.screen === 'workbench') {
+    const links = queryReviewState()?.factLinks || [];
+    if (!fact(ui.factId)) ui.factId = links[0]?.fact_id || '';
+  } else if (!fact(ui.factId)) {
+    ui.factId = ui.screen === 'fact-review' ? sortedFacts()[0]?.fact_id || '' : '';
   }
 
   const relation = factEvidenceLink(ui.factId);
@@ -1015,6 +1068,7 @@ function ensureContext() {
 
 function selectQuery(id, { resetEvidence = true } = {}) {
   if (!query(id)) return;
+  if (ui.queryId !== id) ui.queryReview = null;
   ui.queryId = id;
   const linked = factsOfQuery(id);
   ui.factId = linked[0]?.fact_id || '';
@@ -1031,6 +1085,13 @@ function selectQuery(id, { resetEvidence = true } = {}) {
 }
 
 function selectFact(id, { resetEditor = true } = {}) {
+  if (ui.factId !== id) {
+    ui.selectedChunkIds.clear();
+    ui.remoteChunks = [];
+    ui.remoteSearchTerm = '';
+    ui.remoteMeta = null;
+    ui.search = '';
+  }
   ui.factId = fact(id) ? id : '';
   ui.selectedEvidenceIds.clear();
   if (resetEditor) {
@@ -1092,6 +1153,32 @@ function currentQuery() {
   return query(ui.queryId);
 }
 
+function queryReviewState() {
+  if (!currentQuery()) return null;
+  if (ui.queryReview?.queryId !== ui.queryId) {
+    ui.queryReview = {
+      queryId: ui.queryId,
+      factLinks: queryFactLinks(ui.queryId).map((link) => ({
+        fact_id: link.fact_id,
+        requirement: link.requirement,
+        group_id: link.group_id || '',
+      })),
+      factStatuses: {},
+      factFilter: 'all',
+      factFilterText: '',
+    };
+  }
+  return ui.queryReview;
+}
+
+function queryReviewIsDirty() {
+  const review = queryReviewState();
+  if (!review) return false;
+  const key = (links) => JSON.stringify(links.map((link) => [link.fact_id, link.requirement, link.group_id || '']).sort((a, b) => a[0].localeCompare(b[0])));
+  return key(review.factLinks) !== key(queryFactLinks(review.queryId))
+    || Object.entries(review.factStatuses).some(([id, status]) => fact(id)?.status !== status);
+}
+
 function currentFactLink() {
   return factsOfQuery(ui.queryId).find((item) => item.fact_id === ui.factId) || null;
 }
@@ -1117,6 +1204,23 @@ function nextQuery(id, direction) {
   const index = items.findIndex((row) => row.query_id === id);
   if (index < 0) return '';
   return items[(index + direction + items.length) % items.length]?.query_id || '';
+}
+
+function sortedFacts() {
+  return [...rows('facts')].sort((a, b) => a.fact_id.localeCompare(b.fact_id, 'zh-CN', { numeric: true }));
+}
+
+function nextFact(id, direction) {
+  const items = sortedFacts();
+  const index = items.findIndex((row) => row.fact_id === id);
+  return index < 0 ? '' : items[(index + direction + items.length) % items.length]?.fact_id || '';
+}
+
+function moveToFact(factId) {
+  if (!fact(factId)) return;
+  const params = currentNavigationParams();
+  selectFact(factId);
+  navigate('fact-review', { ...params, fact: factId, evidence: '' });
 }
 
 function documentOptionsFromEvidence() {
@@ -1201,7 +1305,7 @@ function renderWorkbench() {
         <div class="panel">
           ${emptyState({
             title: '还没有 Query',
-            copy: '先从 Fact 构造第一条主问，再回到工作台关联 Evidence 与 RAGFlow Chunk。',
+            copy: '先从 Fact 构造第一条主问，再审核问题的 Fact 评分规则。',
             actions: `<button class="btn btn-primary" data-action="navigate" data-screen="builder">${icon('plus')} 构造第一条 Query</button>
               <button class="btn btn-outline" data-action="navigate" data-screen="facts">${icon('fact')} 先录入 Fact</button>`,
           })}
@@ -1213,22 +1317,122 @@ function renderWorkbench() {
   if (!row) return `<section class="screen">${emptyState({ title: 'Query 不存在', copy: '请从 Query 清单重新选择。' })}</section>`;
 
   return `
-    <section class="screen workbench-screen">
+    <section class="screen workbench-screen query-review-screen">
       <div class="workbench-grid">
         ${renderQueryPanel(row)}
+        ${renderQueryFactsPanel(queryReviewState())}
+        ${renderQueryFactDetail()}
+      </div>
+      ${renderQueryActionDock(row)}
+    </section>`;
+}
+
+function renderFactReview() {
+  const row = currentFact();
+  if (!row) {
+    return `<section class="screen"><div class="panel">${emptyState({
+      title: '还没有 Fact',
+      copy: '先录入一条事实，再关联 Evidence。',
+      actions: '<button class="btn btn-primary" data-action="new-fact" type="button">新建 Fact</button>',
+    })}</div></section>`;
+  }
+  const queue = sortedFacts();
+  const references = rows('query_facts').filter((link) => link.fact_id === row.fact_id).map((link) => query(link.query_id)).filter(Boolean);
+  const linkedEvidence = evidenceOfFact(row.fact_id);
+  return `
+    <section class="screen workbench-screen fact-review-screen">
+      <div class="workbench-grid">
+        <section class="panel query-panel">
+          <div class="panel-head">
+            <div class="panel-title"><h2>Fact 审核台</h2><small>${queue.findIndex((item) => item.fact_id === row.fact_id) + 1} / ${queue.length}</small></div>
+            <div class="queue-switcher">
+              <button class="icon-btn" data-action="prev-fact" type="button" aria-label="上一条 Fact">${icon('left')}</button>
+              <select class="select" data-action="select-review-fact" aria-label="选择 Fact">
+                ${queue.map((item) => `<option value="${attr(item.fact_id)}" ${item.fact_id === row.fact_id ? 'selected' : ''}>${esc(item.fact_id)} · ${esc(compactExcerpt(item.statement, 44))}</option>`).join('')}
+              </select>
+              <button class="icon-btn" data-action="next-fact" type="button" aria-label="下一条 Fact">${icon('right')}</button>
+            </div>
+          </div>
+          <div class="panel-body" data-scroll-key="fact-review-panel">
+            <div class="query-hero">
+              <div class="query-hero-top">${idChip(row.fact_id)}${statusChip(row.status)}<span class="chip plain">${esc(row.importance)}</span></div>
+              <p class="query-text">${esc(row.statement)}</p>
+              <p class="hint">${esc(row.topic || '未分类')} · ${esc(factTypeLabel(row.fact_type))}</p>
+              <div class="query-actions">
+                ${currentNavigationParams().query && text(currentNavigationParams().returnTo).split(',').at(-1) === 'workbench' ? '<button class="btn btn-sm btn-soft" data-action="return-from-fact-review" type="button">返回 Query 审核台</button>' : ''}
+                <button class="btn btn-sm btn-outline" data-action="open-fact-library" data-id="${attr(row.fact_id)}" type="button">${icon('edit')} 编辑 Fact</button>
+                <button class="btn btn-sm btn-ghost" data-action="navigate" data-screen="facts" data-fact="${attr(row.fact_id)}" type="button">返回 Fact 库</button>
+              </div>
+            </div>
+            <div class="section-head"><h3>${icon('link')} 已关联 Evidence <span class="count">${linkedEvidence.length}</span></h3></div>
+            ${linkedEvidence.length ? `<div class="fact-list">${linkedEvidence.map((item) => `
+              <button class="fact-row ${ui.previewEvidenceId === item.evidence_id ? 'active' : ''}" data-action="preview-evidence" data-id="${attr(item.evidence_id)}" type="button">
+                <span class="fact-main"><span class="fact-topline">${idChip(item.evidence_id)}${statusChip(item.status)}</span><strong>${esc(item.title)}</strong><span class="fact-meta">${esc(compactExcerpt(item.excerpt, 90))}</span></span>
+              </button>`).join('')}</div>` : '<p class="hint">从中间搜索并勾选 Evidence，再保存关联。</p>'}
+            <div class="section-head"><h3>${icon('query')} 引用此 Fact 的 Query <span class="count">${references.length}</span></h3></div>
+            <p class="hint">证据关联适用于所有引用此 Fact 的 Query。</p>
+            ${references.length ? `<div class="fact-list">${references.map((item) => `
+              <button class="fact-row" data-action="open-query" data-id="${attr(item.query_id)}" type="button">
+                <span class="fact-main"><span class="fact-topline">${idChip(item.query_id)}${statusChip(item.status)}</span><strong>${esc(item.text)}</strong></span>${icon('right')}
+              </button>`).join('')}</div>` : '<p class="hint">尚无 Query 引用。可以先完成这条 Fact 的证据关联。</p>'}
+          </div>
+        </section>
         ${renderCenterPanel()}
         ${renderDetailPanel()}
       </div>
-      ${renderActionDock(row)}
+      ${renderActionDock()}
     </section>`;
+}
+
+function renderQueryFactDetail() {
+  const row = currentFact();
+  return `<aside class="panel detail-panel query-fact-detail">
+    <div class="panel-head"><div class="panel-title"><h2>Fact 与证据链</h2><small>只读核对</small></div></div>
+    <div class="panel-body" data-scroll-key="query-fact-detail">
+      ${row ? `
+        <section class="detail-section">
+          <div class="row wrap">${idChip(row.fact_id)}${statusChip(row.status)}<span class="chip plain">${esc(row.importance)}</span></div>
+          <p class="query-text">${esc(row.statement)}</p>
+          <p class="hint">${esc(row.topic || '未分类')} · ${esc(factTypeLabel(row.fact_type))}</p>
+          <button class="btn btn-outline" data-action="open-query-fact-review" type="button">${icon('external')} 在 Fact 审核台管理证据</button>
+        </section>
+        <section class="detail-section">
+          <h3>已有 Evidence · ${esc(factEvidenceLink(row.fact_id)?.operator || 'OR')}</h3>
+          ${evidenceOfFact(row.fact_id).length ? evidenceOfFact(row.fact_id).map((item) => `
+            <article class="query-evidence-reference">
+              <div class="row wrap">${idChip(item.evidence_id)}${statusChip(item.status)}</div>
+              <h3>${esc(item.title)}</h3>
+              <pre class="readonly-source">${esc(item.excerpt)}</pre>
+              <details><summary>来源 Chunk · ${chunkIdsOfEvidence(item.evidence_id).length}</summary>
+                ${chunkIdsOfEvidence(item.evidence_id).map((id) => {
+                  const chunk = localChunk(id);
+                  return `<div class="query-chunk-reference"><strong>${esc(chunk?.document_name || id)}</strong><p class="tiny muted">${esc(id)} · ${esc(pageLabel(chunk?.page))}</p><pre class="readonly-source">${esc(chunk?.content || '无本地快照')}</pre></div>`;
+                }).join('')}
+              </details>
+            </article>`).join('') : '<p class="hint">这条 Fact 尚无 Evidence。进入 Fact 审核台补充证据链。</p>'}
+        </section>` : emptyState({ title: '选择一条 Fact 查看证据链', copy: '点击中间列表的 Fact ID，预览后再决定是否勾选。', iconName: 'fact' })}
+    </div>
+  </aside>`;
+}
+
+function renderQueryActionDock(row) {
+  const links = queryReviewState()?.factLinks || [];
+  return `<div class="action-dock query-action-dock">
+    <div class="dock-summary"><strong>${esc(row.query_id)} · ${esc(row.text)}</strong><span>${queryReviewIsDirty() ? '有未保存修改 · ' : ''}已选择 ${links.length} 条 Fact · ${esc(queryFactCountSummary(links))}</span></div>
+    <span class="spacer"></span>
+    <div class="dock-actions">
+      <button class="btn btn-soft" data-action="save-query-facts" type="button" ${ui.busy ? 'disabled' : ''}>${icon('check')} 保存 Fact 关联</button>
+      <button class="btn btn-outline" data-action="save-query-facts-next" type="button" ${ui.busy ? 'disabled' : ''}>保存并下一条 Query</button>
+      <button class="btn btn-success" data-action="approve-query" data-id="${attr(row.query_id)}" data-advance="true" type="button" ${ui.busy ? 'disabled' : ''}>${icon('check')} 确认 Query</button>
+    </div>
+  </div>`;
 }
 
 function renderQueryPanel(row) {
   const queue = sortedQueries();
   const position = queue.findIndex((item) => item.query_id === row.query_id) + 1;
   const family = familyOfQuery(row.query_id);
-  const links = factsOfQuery(row.query_id);
-  const requirementCounts = queryFactRequirementCounts(links);
+  const links = (queryReviewState()?.factLinks || []).map((link) => ({ ...link, fact: fact(link.fact_id) })).filter((link) => link.fact);
   const related = links.map((item) => item.fact);
   const coverage = related.map((item) => ({
     fact: item,
@@ -1273,10 +1477,7 @@ function renderQueryPanel(row) {
           </div>
           <div class="query-actions">
             <button class="btn btn-sm btn-soft" data-action="open-query-facts" type="button">${icon('plus')} 管理 Facts</button>
-            <button class="btn btn-sm btn-outline" data-action="run-recall" type="button">${icon('search')} 试检索</button>
-            <button class="btn btn-sm btn-outline" data-action="workbench-auto-match" type="button" ${ui.remoteLoading || ui.evidenceWorkspace.loading ? 'disabled' : ''}>
-              ${ui.evidenceWorkspace.loading ? '<span class="spinner light"></span>' : icon('sparkle')} 自动匹配当前 Query
-            </button>
+            <button class="btn btn-sm btn-outline" data-action="run-recall" type="button" ${ui.busy ? 'disabled' : ''}>${icon('search')} 保存并试检索</button>
           </div>
         </div>
 
@@ -1292,40 +1493,6 @@ function renderQueryPanel(row) {
               <span>${esc(compactExcerpt(item.text, 34))}</span>
             </button>`).join('')}
         </div>
-
-        <div class="section-head">
-          <h3>${icon('fact')} 已关联 Facts <span class="count">${links.length}</span></h3>
-          <button class="btn-link" data-action="open-query-facts" type="button">调整</button>
-        </div>
-        ${links.length ? `
-          <div class="fact-list">
-            ${coverage.map(({ fact: item, evidenceCount, chunkCount }) => `
-              <button class="fact-row ${item.fact_id === ui.factId ? 'active' : ''}" data-action="open-fact-library" data-id="${attr(item.fact_id)}" type="button">
-                <span class="fact-main">
-                  <span class="fact-topline">
-                    ${idChip(item.fact_id)}
-                    ${requirementChip(
-                      links.find((link) => link.fact_id === item.fact_id)?.requirement || 'required',
-                      assignmentGroupId(links.find((link) => link.fact_id === item.fact_id) || {}),
-                    )}
-                    <span class="chip">${esc(item.importance || 'P1')}</span>
-                    ${statusChip(item.status)}
-                  </span>
-                  <span class="fact-statement">${esc(item.statement)}</span>
-                  <span class="fact-meta">
-                    <span>${esc(item.topic || '未分类')}</span>
-                    <span class="${evidenceCount ? 'ok' : 'gap'}">${evidenceCount} Evidence</span>
-                    <span class="${chunkCount ? 'ok' : 'gap'}">${chunkCount} Chunk</span>
-                  </span>
-                </span>
-                <span class="fact-side">${icon('right')}</span>
-              </button>`).join('')}
-          </div>` : `
-          <div class="readiness-box blocked">
-            <div class="readiness-title">${icon('alert')} 这条 Query 还没有 Fact</div>
-            <p class="hint">先关联至少一个必需评分条件；可设置多组必需组和任选组。</p>
-            <button class="btn btn-sm btn-soft" data-action="open-query-facts" type="button">${icon('plus')} 关联 Fact</button>
-          </div>`}
 
         <div class="section-head">
           <h3>${icon('check')} 审核条件</h3>
@@ -1367,10 +1534,7 @@ function renderCenterPanel() {
           ${ui.centerTab === 'chunk' ? `
             <button class="btn btn-primary" data-action="search-ragflow" type="button" ${ui.remoteLoading ? 'disabled' : ''}>
               ${ui.remoteLoading ? '<span class="spinner light"></span>' : icon('search')} 检索
-            </button>` : `
-            <button class="btn btn-sm btn-outline" data-action="workbench-auto-match" type="button" ${ui.remoteLoading || ui.evidenceWorkspace.loading ? 'disabled' : ''}>
-              ${ui.evidenceWorkspace.loading ? '<span class="spinner light"></span>' : icon('sparkle')} 自动匹配当前 Query
-            </button>`}
+            </button>` : ''}
         </div>
         <div class="filter-row">
           ${ui.centerTab === 'evidence' ? `
@@ -1400,7 +1564,7 @@ function renderCenterPanel() {
             </select>
             ${ui.remoteSearchTerm ? `<button class="btn btn-sm btn-outline" data-action="show-local-chunks" type="button">${icon('refresh')} 本地快照</button>` : ''}`}
           <span class="spacer"></span>
-          <span class="tiny faint">${ui.centerTab === 'evidence' ? '支持多选后批量关联' : '多选 Chunk 可摘录为一条 Evidence'}</span>
+          ${ui.screen === 'fact-review' ? '' : `<span class="tiny faint">${ui.centerTab === 'evidence' ? '支持多选后批量关联' : '多选 Chunk 可摘录为一条 Evidence'}</span>`}
         </div>
       </div>
       <div id="center-results" class="panel-body" data-scroll-key="center-results">
@@ -1740,7 +1904,7 @@ function renderDetailPanel() {
     </aside>`;
 }
 
-function renderActionDock(row) {
+function renderActionDock() {
   const linked = evidenceOfFact(ui.factId);
   const selected = [...ui.selectedEvidenceIds].map(evidence).filter(Boolean);
   const hasPending = selected.length > 0;
@@ -1774,7 +1938,6 @@ function renderActionDock(row) {
           ${icon('link')} 保存关联
         </button>
         <button class="btn btn-outline" data-action="save-association-next" type="button" ${ui.factId ? '' : 'disabled'}>保存并下一条</button>
-        <button class="btn btn-success" data-action="approve-query" data-id="${attr(row.query_id)}" data-advance="true" type="button">${icon('check')} 确认 Query</button>
       </div>
     </div>`;
 }
@@ -1977,9 +2140,25 @@ function filteredQueryGroups() {
     const variants = all.filter((row) => row.parent_query_id === rootId);
     const visible = [root, ...variants].filter((row) => row
       && (!ui.queryStatus || row.status === ui.queryStatus)
+      && (!ui.queryClaimFilter || queryClaimFilterMatches(queryClaim(row.query_id)))
       && queryMatchesSearch(row));
     return { root, variants, visible };
   }).filter((group) => group.visible.length);
+}
+
+function queryClaimFilterMatches(claim) {
+  if (ui.queryClaimFilter === 'mine') return Boolean(claim && claim.owner === ui.reviewerName);
+  if (ui.queryClaimFilter === 'others') return Boolean(claim && claim.owner !== ui.reviewerName);
+  return !claim;
+}
+
+function queryClaimChip(row) {
+  const claim = queryClaim(row.query_id);
+  if (!claim) return '<span class="chip plain">未领取</span>';
+  const mine = claim.owner === ui.reviewerName;
+  const action = mine ? 'release-query-claim' : 'renew-query-claim';
+  const title = mine ? '点击释放领取' : '点击尝试续期';
+  return `<button class="chip chip-button ${mine ? 'claim-mine' : 'claim-other'}" data-action="${action}" data-id="${attr(row.query_id)}" type="button" title="${title}" aria-label="${title}">${icon('lock')} ${esc(claim.owner)}</button>`;
 }
 
 function queryListRow(row, depth = 0) {
@@ -1996,6 +2175,7 @@ function queryListRow(row, depth = 0) {
       </td>
       <td>${variantChip(row.variant_type)}</td>
       <td>${statusChip(row.status)}</td>
+      <td>${queryClaimChip(row)}</td>
       <td>${esc(BEHAVIOR_LABELS[row.expected_behavior] || row.expected_behavior)}</td>
       <td>${links.length} Facts <span class="tiny muted">/${counts.requiredGroups} 必需组 · ${counts.requiredSingles} 单项 · ${counts.alternatives} 任选组 · ${counts.conditions} 条件</span></td>
       <td class="hide-sm">${esc(compactExcerpt(row.notes, 50) || '—')}</td>
@@ -2003,6 +2183,7 @@ function queryListRow(row, depth = 0) {
         <div class="table-actions">
           <button class="icon-btn" data-action="open-query" data-id="${attr(row.query_id)}" type="button" title="打开审核">${icon('eye')}</button>
           <button class="icon-btn" data-action="edit-query" data-id="${attr(row.query_id)}" type="button" title="编辑">${icon('edit')}</button>
+          <button class="icon-btn" data-action="claim-query" data-id="${attr(row.query_id)}" type="button" title="领取">${icon('lock')}</button>
           <button class="icon-btn" data-action="approve-query" data-id="${attr(row.query_id)}" data-advance="false" type="button" title="确认" ${row.status === 'approved' ? 'disabled' : ''}>${icon('check')}</button>
           <button class="icon-btn link-danger" data-action="delete-query" data-id="${attr(row.query_id)}" type="button" title="删除">${icon('trash')}</button>
         </div>
@@ -2018,9 +2199,10 @@ function renderQueryList() {
       <div class="screen-head">
         <div>
           <h1>Query 清单</h1>
-          <p>按主问分组查看同义句和口语化变体。打开任一条进入证据工作台，确认前会保留待复核状态。</p>
+          <p>按主问分组查看同义句和口语化变体。领取只用于分工避重，过期后可被他人领取。</p>
         </div>
         <div class="head-actions">
+          <button class="btn btn-outline" data-action="show-reviewer-name" type="button">${icon('user')} ${ui.reviewerName ? esc(ui.reviewerName) : '设置显示名'}</button>
           <button class="btn btn-primary" data-action="navigate" data-screen="builder" type="button">${icon('plus')} 构造 Query</button>
         </div>
       </div>
@@ -2035,6 +2217,12 @@ function renderQueryList() {
             <option value="">全部状态</option>
             ${Object.entries(STATUS_LABELS).map(([value, label]) => `<option value="${value}" ${ui.queryStatus === value ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
+          <select class="select" data-action="filter-query-claim" aria-label="领取状态">
+            <option value="">全部领取</option>
+            <option value="free" ${ui.queryClaimFilter === 'free' ? 'selected' : ''}>未领取</option>
+            <option value="mine" ${ui.queryClaimFilter === 'mine' ? 'selected' : ''}>我领取的</option>
+            <option value="others" ${ui.queryClaimFilter === 'others' ? 'selected' : ''}>他人领取</option>
+          </select>
           <span class="spacer"></span>
           <span class="tiny muted">显示 ${visibleCount} / ${rows('queries').length} 条</span>
         </div>
@@ -2046,6 +2234,7 @@ function renderQueryList() {
                   <th>Query</th>
                   <th>类型</th>
                   <th>状态</th>
+                  <th>领取</th>
                   <th>期望行为</th>
                   <th>Fact 依赖</th>
                   <th class="hide-sm">备注</th>
@@ -2127,7 +2316,7 @@ function renderFactEditor() {
         <div class="table-actions">
           ${isEdit ? `<button class="btn btn-sm btn-outline" data-action="return-from-facts" type="button">${icon('left')} 返回</button>` : ''}
           ${isEdit ? `<button class="btn btn-sm btn-outline" data-action="open-fact-workbench" data-id="${attr(draft.fact_id)}" type="button">${icon('link')} 去关联证据</button>` : ''}
-          ${isEdit ? `<button class="btn btn-sm btn-outline" data-action="open-fact-evidence-review" data-id="${attr(draft.fact_id)}" type="button">${icon('database')} 证据审核</button>` : ''}
+          ${isEdit ? `<button class="btn btn-sm btn-outline" data-action="open-fact-evidence-review" data-id="${attr(draft.fact_id)}" type="button">${icon('chunk')} 查找来源 Chunk</button>` : ''}
           ${isEdit ? `<button class="icon-btn link-danger" data-action="delete-fact" data-id="${attr(draft.fact_id)}" type="button" title="删除 Fact">${icon('trash')}</button>` : ''}
         </div>
       </div>
@@ -2694,7 +2883,7 @@ function renderEvidenceLibrary() {
             <span class="tiny muted">已选 ${selectedCandidates.length} 个来源 Chunk</span>
             <span class="spacer"></span>
             <button class="btn btn-ghost" data-action="clear-evidence-auto-selection" type="button" ${selectedCandidates.length ? '' : 'disabled'}>清空选择</button>
-            <button class="btn btn-outline" data-action="send-auto-match-to-workbench" type="button" ${selectedCandidates.length ? '' : 'disabled'}>${icon('chunk')} 送入工作台</button>
+            <button class="btn btn-outline" data-action="send-auto-match-to-workbench" type="button" ${selectedCandidates.length ? '' : 'disabled'}>${icon('chunk')} 送入 Fact 审核台</button>
             <button class="btn btn-success" data-action="create-evidence-draft" type="button" ${selectedCandidates.length && fact(workspace.factId) && !ui.busy ? '' : 'disabled'}>
               ${icon('plus')} 创建 Evidence 草稿
             </button>
@@ -2804,17 +2993,18 @@ function modalShell({ title, subtitle = '', body, footer = '', wide = false }) {
     </div>`;
 }
 
-function renderQueryFactsModal(modalState) {
-  const factLinks = modalState.factLinks || [];
+function renderQueryFactsPanel(review) {
+  const factLinks = review.factLinks;
   const selected = new Map(factLinks.map((link) => [link.fact_id, link]));
-  const factFilter = modalState.factFilter === 'selected' ? 'selected' : 'all';
-  const factFilterText = modalState.factFilterText || '';
+  const factFilter = review.factFilter;
+  const factFilterText = review.factFilterText;
   const factAssignmentOptions = assignmentOptions(factLinks);
-  const factStatuses = modalState.factStatuses || {};
-  return modalShell({
-    title: `管理 ${modalState.queryId} 的 Facts`,
-    subtitle: '必需单项各计 1 项；必需组内每条都要命中，各自计分；每个任选组计 1 项，命中组内任一 Fact 即满足。可选只作上下文，禁止不得作答依据。修改审核状态会影响所有引用该 Fact 的 Query。',
-    body: rows('facts').length ? `
+  const factStatuses = review.factStatuses;
+  return `<section class="panel center-panel query-facts-panel">
+    <div class="panel-head"><div class="panel-title"><h2>搜索与选择 Facts</h2><small>为 ${esc(review.queryId)} 设置评分规则</small></div></div>
+    <div class="panel-body" data-scroll-key="query-facts-panel">
+      <p class="hint">勾选标准答案，点击 Fact ID 查看证据链。必需组每条都要命中；每个任选组命中任一条即可。全局审核状态的修改会影响其他引用此 Fact 的 Query。</p>
+      ${rows('facts').length ? `
       <div class="query-facts-summary" data-query-facts-summary>${esc(queryFactCountSummary(factLinks))}</div>
       <div class="query-facts-filters">
         <button class="tab ${factFilter === 'all' ? 'active' : ''}" data-action="filter-query-facts" data-filter="all" type="button" aria-pressed="${factFilter === 'all'}">
@@ -2835,14 +3025,14 @@ function renderQueryFactsModal(modalState) {
         ${rows('facts').map((row) => {
           const link = selected.get(row.fact_id);
           const requirement = link?.requirement;
-          const visible = factOptionVisible(row, link, modalState);
+          const visible = factOptionVisible(row, link, review);
           return `
             <div class="fact-option ${requirement ? 'selected' : ''}" data-fact-option="${attr(row.fact_id)}" ${visible ? '' : 'hidden'}>
-              <button class="check ${requirement ? 'checked' : ''}" data-action="toggle-modal-fact" data-id="${attr(row.fact_id)}" type="button" aria-label="${requirement ? '移除' : '添加'} ${attr(row.fact_id)}">${requirement ? icon('check') : ''}</button>
+              <button class="check ${requirement ? 'checked' : ''}" id="query-fact-toggle-${attr(row.fact_id)}" data-action="toggle-query-fact" data-id="${attr(row.fact_id)}" type="button" aria-label="${requirement ? '移除' : '添加'} ${attr(row.fact_id)}">${requirement ? icon('check') : ''}</button>
               <div class="fact-option-main">
                 <div class="fact-option-head">
-                  ${idChip(row.fact_id)}
-                  ${statusChip(row.status)}
+                  <button class="btn-link" data-action="preview-query-fact" data-id="${attr(row.fact_id)}" type="button" aria-label="查看 ${attr(row.fact_id)} 的证据链">${idChip(row.fact_id)}</button>
+                  ${statusChip(factStatuses[row.fact_id] || row.status)}
                   <span class="chip">${esc(row.importance || 'P1')}</span>
                 </div>
                 <div class="fact-option-statement">${esc(row.statement)}</div>
@@ -2851,10 +3041,10 @@ function renderQueryFactsModal(modalState) {
                   <span class="spacer"></span>
                   <div class="fact-option-controls">
                     <label class="fact-option-control">计分方式与分组
-                      ${assignmentSelect(link || { requirement: 'required', group_id: '' }, factLinks, 'set-modal-fact-assignment', row.fact_id, !link, factAssignmentOptions)}
+                      ${assignmentSelect(link || { requirement: 'required', group_id: '' }, factLinks, 'set-query-fact-assignment', row.fact_id, !link, factAssignmentOptions)}
                     </label>
-                    <label class="fact-option-control">审核状态
-                      <select class="select" data-action="set-modal-fact-status" data-id="${attr(row.fact_id)}" aria-label="${attr(row.fact_id)} 的审核状态">
+                    <label class="fact-option-control">全局审核状态
+                      <select class="select" id="query-fact-status-${attr(row.fact_id)}" data-action="set-query-fact-status" data-id="${attr(row.fact_id)}" aria-label="${attr(row.fact_id)} 的审核状态">
                         ${Object.entries(STATUS_LABELS).map(([value, label]) => `<option value="${value}" ${(factStatuses[row.fact_id] || row.status) === value ? 'selected' : ''}>${label}</option>`).join('')}
                       </select>
                     </label>
@@ -2863,7 +3053,7 @@ function renderQueryFactsModal(modalState) {
               </div>
             </div>`;
         }).join('')}
-        <div class="query-facts-empty" data-query-facts-empty ${rows('facts').some((row) => factOptionVisible(row, selected.get(row.fact_id), modalState)) ? 'hidden' : ''}>
+        <div class="query-facts-empty" data-query-facts-empty ${rows('facts').some((row) => factOptionVisible(row, selected.get(row.fact_id), review)) ? 'hidden' : ''}>
           ${emptyState({
             title: factFilterText ? '没有匹配的 Fact' : factFilter === 'selected' ? '还没有勾选 Fact' : 'Fact 库为空',
             copy: factFilterText ? '清空搜索词后再试。' : factFilter === 'selected' ? '切回“全部”勾选需要的 Fact，再回来编辑计分方式和状态。' : '先手工录入至少一条事实，再关联到 Query。',
@@ -2873,12 +3063,9 @@ function renderQueryFactsModal(modalState) {
       title: 'Fact 库为空',
       copy: '先手工录入至少一条事实，再关联到 Query。',
       actions: `<button class="btn btn-primary" data-action="navigate" data-screen="facts" type="button">${icon('fact')} 去录入 Fact</button>`,
-    }),
-    footer: `
-      <button class="btn btn-ghost" data-action="close-modal" type="button">取消</button>
-      <button class="btn btn-primary" data-action="save-query-facts" type="button">${icon('check')} 保存关联与状态</button>`,
-    wide: true,
-  });
+    })}
+    </div>
+  </section>`;
 }
 
 function renderQueryEditModal(modalState) {
@@ -3186,6 +3373,22 @@ LLM_MODEL=${esc(config.llm?.model || '<model>')}</div>
   });
 }
 
+function renderReviewerNameModal(modalState) {
+  return modalShell({
+    title: '设置显示名',
+    subtitle: '显示名保存在当前浏览器，只用于领取标记。',
+    body: `
+      ${modalState.error ? `<div class="readiness-box blocked"><div class="readiness-title">${icon('alert')} ${esc(modalState.error)}</div></div>` : ''}
+      <label class="field">
+        <span class="field-label">你的显示名</span>
+        <input class="input" id="reviewer-name-input" data-bind="reviewer-name" value="${attr(modalState.value || '')}" placeholder="例如：张三" maxlength="40" autocomplete="off">
+      </label>`,
+    footer: `
+      <button class="btn btn-ghost" data-action="close-modal" type="button">取消</button>
+      <button class="btn btn-primary" data-action="save-reviewer-name" type="button">${icon('check')} 保存</button>`,
+  });
+}
+
 function renderHelpModal() {
   return modalShell({
     title: '使用说明',
@@ -3210,13 +3413,13 @@ function renderModal() {
     modalRoot.innerHTML = '';
     return;
   }
-  if (modalState.type === 'query-facts') modalRoot.innerHTML = renderQueryFactsModal(modalState);
-  else if (modalState.type === 'query-edit') modalRoot.innerHTML = renderQueryEditModal(modalState);
+  if (modalState.type === 'query-edit') modalRoot.innerHTML = renderQueryEditModal(modalState);
   else if (modalState.type === 'delete') modalRoot.innerHTML = renderDeleteModal(modalState);
   else if (modalState.type === 'recall') modalRoot.innerHTML = renderRecallModal(modalState);
   else if (modalState.type === 'evidence-create') modalRoot.innerHTML = renderEvidenceCreateModal(modalState);
   else if (modalState.type === 'config') modalRoot.innerHTML = renderConfigModal();
   else if (modalState.type === 'help') modalRoot.innerHTML = renderHelpModal();
+  else if (modalState.type === 'reviewer-name') modalRoot.innerHTML = renderReviewerNameModal(modalState);
   else modalRoot.innerHTML = '';
 }
 
@@ -3278,6 +3481,57 @@ async function runMutation(task, { success = '', after = null } = {}) {
     toast(apiErrorText(error), 'error');
     render();
     return null;
+  }
+}
+
+async function runClaimMutation(task, successMessage) {
+  if (ui.busy) return null;
+  ui.busy = true;
+  try {
+    const result = await task();
+    await applyMutationResult(result);
+    toast(successMessage, 'success');
+    render();
+    return result;
+  } finally {
+    ui.busy = false;
+  }
+}
+
+async function claimQueryFromList(queryId) {
+  const owner = requireReviewerName();
+  if (!owner) return;
+  try {
+    await runClaimMutation(() => api.claimQuery(queryId, owner), `已领取 ${queryId}`);
+  } catch (error) {
+    if (error.status === 409) promptReviewerName(error.message || '这条 Query 已被领取。');
+    else toast(apiErrorText(error), 'error');
+  }
+}
+
+async function renewQueryClaimFromList(queryId) {
+  const owner = text(ui.reviewerName);
+  if (!owner) {
+    promptReviewerName('请先填写显示名。');
+    return;
+  }
+  try {
+    await runClaimMutation(() => api.renewQueryClaim(queryId, owner), '领取已续期 30 分钟');
+  } catch (error) {
+    toast(apiErrorText(error), 'error');
+  }
+}
+
+async function releaseQueryClaimFromList(queryId) {
+  const owner = text(ui.reviewerName);
+  if (!owner) {
+    promptReviewerName('请先填写显示名。');
+    return;
+  }
+  try {
+    await runClaimMutation(() => api.releaseQueryClaim(queryId, owner), '已释放领取');
+  } catch (error) {
+    toast(apiErrorText(error), 'error');
   }
 }
 
@@ -3362,7 +3616,7 @@ function currentNavigationParams() {
 function returnNavigationParams(params = currentNavigationParams()) {
   const chain = text(params.returnTo).split(',').filter(Boolean);
   const remaining = chain.slice(0, -1);
-  if (!remaining.includes('workbench')) remaining.unshift('workbench');
+  if (!remaining.length) remaining.push(params.query ? 'workbench' : 'facts');
   return {
     query: params.query,
     fact: params.fact,
@@ -3389,7 +3643,7 @@ function moveToQuery(queryId, factId = '') {
   navigate('workbench', { query: queryId, fact: factId });
 }
 
-function workbenchEvidenceParams(queryId = '', factId = '', evidenceId = '') {
+function factReviewEvidenceParams(queryId = '', factId = '', evidenceId = '') {
   const navigation = currentNavigationParams();
   return {
     query: queryId || navigation.query || ui.queryId,
@@ -3399,7 +3653,7 @@ function workbenchEvidenceParams(queryId = '', factId = '', evidenceId = '') {
   };
 }
 
-function openEvidenceInWorkbench(evidenceId) {
+function openEvidenceInFactReview(evidenceId) {
   const row = evidence(evidenceId);
   if (!row) {
     toast('Evidence 不存在或已被删除', 'error');
@@ -3407,43 +3661,24 @@ function openEvidenceInWorkbench(evidenceId) {
   }
   const linkedFactId = rows('fact_evidence')
     .find((link) => (link.evidence_ids || []).includes(evidenceId))?.fact_id || '';
-  const linkedQueryId = linkedFactId
-    ? rows('query_facts').find((link) => link.fact_id === linkedFactId)?.query_id || ''
-    : '';
-  const queryId = linkedQueryId || ui.queryId;
-  if (!query(queryId)) {
-    toast('找不到可打开这条 Evidence 的 Query', 'error');
+  const targetFactId = linkedFactId || ui.factId;
+  if (!fact(targetFactId)) {
+    toast('请选择目标 Fact，再查看或编辑这条 Evidence', 'info');
     return;
   }
   ui.modal = null;
-  selectQuery(queryId, { resetEvidence: true });
-  if (fact(linkedFactId)) selectFact(linkedFactId, { resetEditor: false });
-  loadEvidenceDraft(evidenceId, fact(linkedFactId) ? linkedFactId : ui.factId);
-  navigate('workbench', workbenchEvidenceParams(
-    queryId,
-    fact(linkedFactId) ? linkedFactId : currentNavigationParams().fact,
+  selectFact(targetFactId, { resetEditor: false });
+  loadEvidenceDraft(evidenceId, targetFactId);
+  navigate('fact-review', factReviewEvidenceParams(
+    currentNavigationParams().query,
+    targetFactId,
     evidenceId,
   ));
 }
 
 function openQueryFacts(queryId) {
-  const row = query(queryId);
-  if (!row) {
-    toast('Query 不存在或已被删除', 'error');
-    return;
-  }
-  setModal({
-    type: 'query-facts',
-    queryId,
-    factFilter: 'all',
-    factFilterText: '',
-    factLinks: queryFactLinks(queryId).map((link) => ({
-      fact_id: link.fact_id,
-      requirement: link.requirement,
-      group_id: link.group_id || '',
-    })),
-    factStatuses: Object.fromEntries(rows('facts').map((row) => [row.fact_id, row.status || 'draft'])),
-  });
+  if (queryId !== ui.queryId) moveToQuery(queryId);
+  view.querySelector('[data-bind="query-facts-search"]')?.focus();
 }
 
 function openQueryEditor(queryId) {
@@ -3507,7 +3742,7 @@ async function runRecall(queryId) {
 
 async function searchRagflow() {
   if (ui.remoteLoading) return;
-  const term = text(ui.search) || text(currentQuery()?.text);
+  const term = text(ui.search) || text(ui.screen === 'fact-review' ? currentFact()?.statement : currentQuery()?.text);
   if (!term) {
     toast('请输入检索关键词或问题', 'error');
     return;
@@ -3859,8 +4094,7 @@ async function saveAssociationAndAdvance() {
     toast('请先选择 Fact', 'error');
     return;
   }
-  const queryId = ui.queryId;
-  const nextId = nextQuery(queryId, 1);
+  const nextId = nextFact(ui.factId, 1);
   let savedEvidenceId = '';
   if (evidenceDraftIsDirty()) {
     const saved = await saveEvidence({ success: '' });
@@ -3873,10 +4107,10 @@ async function saveAssociationAndAdvance() {
     savedEvidenceId,
   ]).filter((id) => evidence(id));
   await runMutation(() => api.linkFactEvidence(ui.factId, evidenceIds, ui.relationOperator), {
-    success: nextId && nextId !== queryId ? '关联已保存' : '关联已保存，已是最后一条 Query',
+    success: '关联已保存',
     after: () => {
       ui.selectedEvidenceIds.clear();
-      if (nextId && nextId !== queryId) moveToQuery(nextId);
+      if (nextId) moveToFact(nextId);
     },
   });
 }
@@ -3888,28 +4122,8 @@ async function approveQuery(queryId, advance = false) {
     return;
   }
   const queryIdToAdvance = advance ? nextQuery(queryId, 1) : '';
-  const shouldLink = ui.screen === 'workbench'
-    && queryId === ui.queryId
-    && fact(ui.factId)
-    && factsOfQuery(queryId).some((link) => link.fact_id === ui.factId);
-
-  if (shouldLink) {
-    let savedEvidenceId = '';
-    if (evidenceDraftIsDirty()) {
-      const saved = await saveEvidence({ success: '' });
-      if (!saved) return;
-      savedEvidenceId = saved.evidence?.evidence_id || '';
-    }
-    const pendingIds = unique([
-      ...evidenceIdsOfFact(ui.factId),
-      ...ui.selectedEvidenceIds,
-      savedEvidenceId,
-    ]).filter((id) => evidence(id));
-    const linked = await runMutation(
-      () => api.linkFactEvidence(ui.factId, pendingIds, ui.relationOperator),
-      { success: '' },
-    );
-    if (!linked) return;
+  if (ui.screen === 'workbench' && queryId === ui.queryId) {
+    if (!await saveQueryFacts({ success: '' })) return;
   }
 
   const latest = query(queryId) || row;
@@ -4033,28 +4247,16 @@ async function saveFact() {
   });
 }
 
-function openFactWorkbench(factId) {
-  const queryLink = rows('query_facts').find((link) => link.fact_id === factId);
-  if (!queryLink) {
-    toast('这条 Fact 还没有关联 Query，先到 Query 清单补充依赖', 'info');
-    return;
-  }
-  const sourceQueryId = currentNavigationParams().query || queryLink.query_id;
-  const sourceQueryLink = sourceQueryId
-    ? rows('query_facts').find((link) => link.query_id === sourceQueryId && link.fact_id === factId)
-    : null;
-  const targetQueryId = sourceQueryLink ? sourceQueryId : queryLink.query_id;
-  if (!sourceQueryLink) {
-    toast('这条 Fact 不属于来源 Query，已按实际关联打开', 'info');
-  }
+function openFactWorkbench(factId, evidenceId = '') {
+  if (!fact(factId)) return;
   const params = currentNavigationParams();
   ui.modal = null;
-  selectQuery(targetQueryId, { resetEvidence: true });
-  if (fact(factId)) selectFact(factId, { resetEditor: true });
-  navigate('workbench', {
-    query: targetQueryId,
+  selectFact(factId);
+  navigate('fact-review', {
+    query: params.query,
     fact: factId,
-    returnTo: extendReturnChain({ returnTo: params.returnTo || 'workbench' }, 'facts'),
+    evidence: evidenceId,
+    returnTo: extendReturnChain(params, 'facts'),
   });
 }
 
@@ -4081,22 +4283,25 @@ async function saveQueryEdit() {
   });
 }
 
-async function saveQueryFacts() {
-  if (ui.modal?.type !== 'query-facts') return;
-  const queryId = ui.modal.queryId;
-  const facts = ui.modal.factLinks.map((link) => ({
+async function saveQueryFacts({ success = 'Query 的 Fact 关联已保存', advance = false } = {}) {
+  const review = queryReviewState();
+  if (!review) return null;
+  const queryId = review.queryId;
+  const nextId = advance ? nextQuery(queryId, 1) : '';
+  const facts = review.factLinks.map((link) => ({
     fact_id: link.fact_id,
     requirement: link.requirement,
     group_id: link.group_id || '',
   }));
-  const factStatuses = Object.entries(ui.modal.factStatuses || {})
+  const factStatuses = Object.entries(review.factStatuses)
     .filter(([factId, status]) => fact(factId)?.status !== status)
     .map(([fact_id, status]) => ({ fact_id, status }));
-  await runMutation(() => api.manageQueryFacts(queryId, facts, factStatuses), {
-    success: factStatuses.length ? 'Fact 关联与审核状态已保存' : 'Query 的 Fact 关联已保存',
+  return runMutation(() => api.manageQueryFacts(queryId, facts, factStatuses), {
+    success,
     after: () => {
-      ui.modal = null;
-      ui.selectedEvidenceIds.clear();
+      review.factLinks = queryFactLinks(queryId).map((link) => ({ fact_id: link.fact_id, requirement: link.requirement, group_id: link.group_id || '' }));
+      review.factStatuses = {};
+      if (nextId && nextId !== queryId) moveToQuery(nextId);
     },
   });
 }
@@ -4157,9 +4362,9 @@ function updateBoundValue(bind, element) {
     ui.overviewSearch = value;
     return true;
   }
-  if (ui.modal?.type === 'query-facts' && bind === 'query-facts-search') {
-    ui.modal.factFilterText = value;
-    syncQueryFactsModal(modalRoot, ui.modal);
+  if (ui.screen === 'workbench' && ui.queryReview && bind === 'query-facts-search') {
+    ui.queryReview.factFilterText = value;
+    syncQueryFactsPanel(view, ui.queryReview);
     return false;
   }
 
@@ -4215,6 +4420,7 @@ function updateBoundValue(bind, element) {
     if (bind === 'query-edit-text') ui.modal.draft.text = value;
     else if (bind === 'query-edit-behavior') ui.modal.draft.expected_behavior = value;
     else if (bind === 'query-edit-status') ui.modal.draft.status = value;
+    else if (bind === 'reviewer-name' && ui.modal?.type === 'reviewer-name') ui.modal.value = value;
     else if (bind === 'query-edit-notes') ui.modal.draft.notes = value;
     else return false;
     return true;
@@ -4234,7 +4440,7 @@ function handleCompositionEnd(event) {
   const element = event.target.closest('[data-bind]');
   if (!element || element.tagName === 'SELECT') return;
   if (updateBoundValue(element.dataset.bind, element)) {
-    if (ui.modal?.type === 'query-facts' && element.dataset.bind === 'query-facts-search') return;
+    if (ui.screen === 'workbench' && ui.queryReview && element.dataset.bind === 'query-facts-search') return;
     renderWithFocus();
   }
 }
@@ -4250,6 +4456,8 @@ function handleChange(event) {
   const action = element.dataset.action;
   if (action === 'select-query-control') {
     moveToQuery(element.value);
+  } else if (action === 'select-review-fact') {
+    moveToFact(element.value);
   } else if (action === 'filter-evidence-status') {
     ui.filters.status = element.value;
     render();
@@ -4264,6 +4472,9 @@ function handleChange(event) {
     render();
   } else if (action === 'filter-query-status') {
     ui.queryStatus = element.value;
+    render();
+  } else if (action === 'filter-query-claim') {
+    ui.queryClaimFilter = element.value;
     render();
   } else if (action === 'change-top-k') {
     ui.topK = Number(element.value) || 12;
@@ -4285,11 +4496,12 @@ function handleChange(event) {
   } else if (action === 'builder-set-assignment') {
     ui.builder.factLinks = applyAssignment(ui.builder.factLinks, element.dataset.id, element.value);
     render();
-  } else if (action === 'set-modal-fact-assignment' && ui.modal?.type === 'query-facts') {
-    ui.modal.factLinks = applyAssignment(ui.modal.factLinks, element.dataset.id, element.value);
-    syncAssignmentSelectors(modalRoot, ui.modal.factLinks);
-  } else if (action === 'set-modal-fact-status' && ui.modal?.type === 'query-facts') {
-    ui.modal.factStatuses = { ...ui.modal.factStatuses, [element.dataset.id]: element.value };
+  } else if (action === 'set-query-fact-assignment' && ui.screen === 'workbench' && ui.queryReview) {
+    ui.queryReview.factLinks = applyAssignment(ui.queryReview.factLinks, element.dataset.id, element.value);
+    renderWithFocus();
+  } else if (action === 'set-query-fact-status' && ui.screen === 'workbench' && ui.queryReview) {
+    ui.queryReview.factStatuses = { ...ui.queryReview.factStatuses, [element.dataset.id]: element.value };
+    renderWithFocus();
   }
 }
 
@@ -4298,24 +4510,41 @@ async function dispatchClickAction(action, element) {
     ui.modal = null;
     const explicitParams = navigationParams(element);
     const params = Object.keys(explicitParams).length ? explicitParams : currentNavigationParams();
-    navigate(element.dataset.screen || 'workbench', params);
+    const screen = element.dataset.screen || 'workbench';
+    if (screen === 'workbench' && !params.query) {
+      params.query = ui.queryId;
+      if (!factsOfQuery(ui.queryId).some((link) => link.fact_id === params.fact)) delete params.fact;
+    }
+    navigate(screen, params);
     if (ui.screen === 'evidence' && !ui.evidenceWorkspace.inventory) loadEvidenceInventory();
   } else if (action === 'retry-load') {
     await retryInitialLoad();
   } else if (action === 'prev-query' || action === 'next-query') {
     const nextId = nextQuery(ui.queryId, action === 'next-query' ? 1 : -1);
     if (nextId) moveToQuery(nextId);
+  } else if (action === 'prev-fact' || action === 'next-fact') {
+    moveToFact(nextFact(ui.factId, action === 'prev-fact' ? -1 : 1));
   } else if (action === 'select-query-id') {
     moveToQuery(element.dataset.id || '');
+  } else if (action === 'preview-query-fact') {
+    const factId = element.dataset.id || '';
+    if (!fact(factId)) return;
+    selectFact(factId);
+    navigate('workbench', { ...currentNavigationParams(), query: ui.queryId, fact: factId, evidence: '' });
+  } else if (action === 'open-query-fact-review') {
+    if (!currentFact()) return;
+    navigate('fact-review', { query: ui.queryId, fact: ui.factId, returnTo: 'workbench' });
+  } else if (action === 'return-from-fact-review') {
+    navigateFromReturnChain();
   } else if (action === 'open-fact-library') {
     const factId = element.dataset.id || '';
     if (!fact(factId)) return;
     setFactDraft(factId);
     const navigation = currentNavigationParams();
     const params = {
-      query: ui.queryId,
+      query: ui.screen === 'workbench' ? ui.queryId : navigation.query,
       fact: factId,
-      returnTo: extendReturnChain(navigation, 'workbench'),
+      returnTo: extendReturnChain(navigation, ui.screen),
     };
     navigate('facts', params);
   } else if (action === 'select-fact') {
@@ -4338,15 +4567,6 @@ async function dispatchClickAction(action, element) {
     return;
   } else if (action === 'search-ragflow') {
     await searchRagflow();
-  } else if (action === 'workbench-auto-match') {
-    evidenceSyncCurrentQuery();
-    const result = await runEvidenceAutoMatch();
-    const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
-    const normalized = candidates.map((candidate) => normalizeCandidate(candidate)).filter(Boolean);
-    ui.evidenceWorkspace.selectedChunkIds = new Set(normalized.map((candidate) => candidate.chunk_id));
-    ui.evidenceWorkspace.selectedChunks = new Map(normalized.map((candidate) => [candidate.chunk_id, candidate]));
-    ui.evidenceWorkspace.selectionOrder = normalized.map((candidate) => candidate.chunk_id);
-    sendAutoMatchCandidatesToWorkbench();
   } else if (action === 'show-auto-match-candidates') {
     const navigation = currentNavigationParams();
     navigate('evidence', {
@@ -4397,7 +4617,7 @@ async function dispatchClickAction(action, element) {
       render();
     }
   } else if (action === 'send-auto-match-to-workbench') {
-    sendAutoMatchCandidatesToWorkbench();
+    sendCandidatesToFactReview();
   } else if (action === 'show-local-chunks') {
     ui.remoteChunks = [];
     ui.remoteSearchTerm = '';
@@ -4441,7 +4661,7 @@ async function dispatchClickAction(action, element) {
     await setRagflowChunkAvailability(element.dataset.id || '', true);
   } else if (action === 'preview-evidence') {
     const evidenceId = element.dataset.id || '';
-    if (ui.screen !== 'workbench') openEvidenceInWorkbench(evidenceId);
+    if (ui.screen !== 'workbench' && ui.screen !== 'fact-review') openEvidenceInFactReview(evidenceId);
     else if (evidence(evidenceId)) {
       loadEvidenceDraft(evidenceId);
       render();
@@ -4500,6 +4720,7 @@ async function dispatchClickAction(action, element) {
   } else if (action === 'approve-query') {
     await approveQuery(element.dataset.id || ui.queryId, element.dataset.advance === 'true');
   } else if (action === 'run-recall') {
+    if (ui.screen === 'workbench' && !await saveQueryFacts({ success: '' })) return;
     await runRecall(element.dataset.id || ui.queryId);
   } else if (action === 'select-recall-fact' && ui.modal?.type === 'recall') {
     const factId = element.dataset.id || '';
@@ -4525,13 +4746,15 @@ async function dispatchClickAction(action, element) {
     await saveQueryEdit();
   } else if (action === 'save-query-facts') {
     await saveQueryFacts();
-  } else if (action === 'filter-query-facts' && ui.modal?.type === 'query-facts') {
-    ui.modal.factFilter = element.dataset.filter === 'selected' ? 'selected' : 'all';
-    syncQueryFactsModal(modalRoot, ui.modal);
-  } else if (action === 'clear-query-facts-search' && ui.modal?.type === 'query-facts') {
-    ui.modal.factFilterText = '';
-    syncQueryFactsModal(modalRoot, ui.modal);
-    modalRoot.querySelector('[data-bind="query-facts-search"]')?.focus();
+  } else if (action === 'save-query-facts-next') {
+    await saveQueryFacts({ advance: true });
+  } else if (action === 'filter-query-facts' && ui.screen === 'workbench' && ui.queryReview) {
+    ui.queryReview.factFilter = element.dataset.filter === 'selected' ? 'selected' : 'all';
+    syncQueryFactsPanel(view, ui.queryReview);
+  } else if (action === 'clear-query-facts-search' && ui.screen === 'workbench' && ui.queryReview) {
+    ui.queryReview.factFilterText = '';
+    syncQueryFactsPanel(view, ui.queryReview);
+    view.querySelector('[data-bind="query-facts-search"]')?.focus();
   } else if (action === 'clear-builder-fact-search') {
     ui.builder.factSearch = '';
     renderWithFocus();
@@ -4544,14 +4767,14 @@ async function dispatchClickAction(action, element) {
   } else if (action === 'clear-overview-search') {
     ui.overviewSearch = '';
     renderWithFocus();
-  } else if (action === 'toggle-modal-fact' && ui.modal?.type === 'query-facts') {
+  } else if (action === 'toggle-query-fact' && ui.screen === 'workbench' && ui.queryReview) {
     const factId = element.dataset.id || '';
-    if (ui.modal.factLinks.some((link) => link.fact_id === factId)) {
-      ui.modal.factLinks = ui.modal.factLinks.filter((link) => link.fact_id !== factId);
+    if (ui.queryReview.factLinks.some((link) => link.fact_id === factId)) {
+      ui.queryReview.factLinks = ui.queryReview.factLinks.filter((link) => link.fact_id !== factId);
     } else if (fact(factId)) {
-      ui.modal.factLinks = [...ui.modal.factLinks, { fact_id: factId, requirement: 'required', group_id: '' }];
+      ui.queryReview.factLinks = [...ui.queryReview.factLinks, { fact_id: factId, requirement: 'required', group_id: '' }];
     }
-    syncQueryFactsModal(modalRoot, ui.modal);
+    renderWithFocus();
   } else if (action === 'clear-query-search') {
     ui.querySearch = '';
     ui.queryStatus = '';
@@ -4584,6 +4807,7 @@ async function dispatchClickAction(action, element) {
       '删除后，该 Fact 会从 Query 依赖中移除，相关 Evidence 本身仍会保留。',
     );
   } else if (action === 'open-fact-workbench') {
+    ui.centerTab = 'evidence';
     openFactWorkbench(element.dataset.id || '');
   } else if (action === 'return-from-facts') {
     navigateFromReturnChain();
@@ -4593,22 +4817,11 @@ async function dispatchClickAction(action, element) {
     const evidenceId = element.dataset.id || '';
     if (!evidence(evidenceId)) return;
     const params = currentNavigationParams();
-    navigate('workbench', {
-      query: params.query || ui.queryId,
-      fact: params.fact || ui.factId,
-      returnTo: extendReturnChain(params, 'facts'),
-      evidence: evidenceId,
-    });
+    openFactWorkbench(ui.factDraft?.fact_id || params.fact || ui.factId, evidenceId);
   } else if (action === 'open-fact-evidence-review') {
     const factId = element.dataset.id || '';
-    if (!fact(factId)) return;
-    const params = currentNavigationParams();
-    navigate('evidence', {
-      query: params.query || ui.queryId,
-      fact: factId,
-      returnTo: extendReturnChain(params, 'facts'),
-    });
-    if (!ui.evidenceWorkspace.inventory) loadEvidenceInventory();
+    ui.centerTab = 'chunk';
+    openFactWorkbench(factId);
   } else if (action === 'clear-fact-search') {
     ui.factSearch = '';
     render();
@@ -4631,6 +4844,26 @@ async function dispatchClickAction(action, element) {
     render();
   } else if (action === 'show-config') {
     setModal({ type: 'config' });
+  } else if (action === 'show-reviewer-name') {
+    promptReviewerName('');
+  } else if (action === 'save-reviewer-name') {
+    const name = text(ui.modal?.value);
+    if (!name) {
+      ui.modal.error = '显示名不能为空。';
+      renderModal();
+      return;
+    }
+    setReviewerName(name);
+    ui.modal = null;
+    renderModal();
+    render();
+    toast(`显示名已设为 ${name}`, 'success');
+  } else if (action === 'claim-query') {
+    await claimQueryFromList(element.dataset.id || '');
+  } else if (action === 'release-query-claim') {
+    await releaseQueryClaimFromList(element.dataset.id || '');
+  } else if (action === 'renew-query-claim') {
+    await renewQueryClaimFromList(element.dataset.id || '');
   } else if (action === 'show-help') {
     setModal({ type: 'help' });
   } else if (action === 'close-modal') {
@@ -4655,6 +4888,7 @@ async function handleClick(event) {
     return;
   }
   if (action === 'set-chunk-available' || action === 'set-chunk-unavailable') event.stopPropagation();
+  if (action === 'claim-query' || action === 'release-query-claim' || action === 'renew-query-claim') event.stopPropagation();
   if (element.tagName === 'A') event.preventDefault();
   try {
     await dispatchClickAction(action, element);

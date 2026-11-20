@@ -23,6 +23,12 @@ import {
   readState,
   upsertEntity,
 } from '../scripts/lib/golden.mjs';
+import {
+  claimQuery,
+  claimsState,
+  releaseQueryClaim,
+  renewQueryClaim,
+} from '../scripts/lib/query-claims.mjs';
 
 const PORT = Number(process.env.GOLDEN_PORT || 4174);
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '127.0.0.1';
@@ -444,8 +450,10 @@ async function polishEvidenceDraft(config, input) {
 function stateBundle() {
   const state = readState(VERSION);
   const config = loadConfig();
+  const claims = claimsState(VERSION).claims;
   return {
     ...state,
+    query_claims: claims.map(({ active, ...claim }) => ({ ...claim, active })),
     config: publicConfig(config),
     taxonomy: {
       topics: [...new Set(state.facts.map((row) => row.topic).filter(Boolean))]
@@ -467,6 +475,24 @@ async function handle(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/golden/evidence/inventory') {
     const state = readState(VERSION);
     return send(res, 200, { inventory: evidenceInventory(state), config: publicConfig(loadConfig()) });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/golden/query-claims/claim') {
+    const body = await safeBody(req);
+    const result = claimQuery(VERSION, body);
+    return send(res, result.created ? 201 : 200, { ...result, state: stateBundle() });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/golden/query-claims/renew') {
+    const body = await safeBody(req);
+    const result = renewQueryClaim(VERSION, body);
+    return send(res, 200, { ...result, state: stateBundle() });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/golden/query-claims/release') {
+    const body = await safeBody(req);
+    const result = releaseQueryClaim(VERSION, body);
+    return send(res, 200, { ...result, state: stateBundle() });
   }
 
   if (req.method === 'POST' && url.pathname.startsWith('/api/golden/entities/')) {
@@ -697,6 +723,9 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     if (error instanceof GoldenError) {
       return send(res, error.status, { error: error.message, details: error.details });
+    }
+    if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 600) {
+      return send(res, error.status, { error: error.message });
     }
     console.error(error);
     return send(res, 500, { error: error.message || 'internal error' });
