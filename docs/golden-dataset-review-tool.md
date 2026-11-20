@@ -6,7 +6,7 @@ The Golden review tool is a local editor for a separately provisioned evaluation
 
 The tool manages seven JSONL tables: queries, facts, evidences, chunks, query–fact links, fact–evidence links, and evidence–chunk links. A query may link to several required, optional, or forbidden facts. Each fact may be supported by one or more evidences; each evidence may refer to multiple chunks.
 
-The tool validates the complete state before saving. It supports review status, evidence drafts, retrieval previews, query and fact management, and recall calculations over data supplied by the operator.
+The tool validates the complete state before saving. It supports separate Query and Fact review workbenches, evidence drafts, retrieval previews, recall calculations, and optional query claims for team coordination. Claims are stored with the provisioned data, separately from the seven core tables.
 
 ## Start
 
