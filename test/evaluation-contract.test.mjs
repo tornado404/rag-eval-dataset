@@ -67,7 +67,7 @@ test('AI QA evaluation ignores maxCases and keeps the full Decision cohort', () 
     config: {
       target: 'ai-qa',
       qaBaseUrl: 'https://api.example.com',
-      qaToken: 'synthetic-token',
+      qaRefreshToken: 'synthetic-refresh-token',
       maxCases: 5,
     },
   });
@@ -108,7 +108,7 @@ test('decision log parsing keeps trace metadata and handles structured decision 
   assert.equal(logs.decisionTracesBySession.get('s1').trace.source, 'llm');
   assert.equal(logs.decisionTracesBySession.get('s1').trace.model_id, 'model-x');
   const observation = logs.byClientTurn.get('eval-1');
-  assert.equal(observation.retrieval.state, 'not_retrieved');
+  assert.equal(observation.retrieval.state, 'not_attempted');
   assert.equal(observation.client_turn_id, 'eval-1');
 });
 
