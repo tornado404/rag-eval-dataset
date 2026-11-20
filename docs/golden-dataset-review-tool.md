@@ -91,12 +91,35 @@ Evidence 与 Chunk 是多对多：一条证据可以由多个 Chunk 共同支撑
 
 ## 审核流程
 
+### 按审核对象选择入口
+
+Query、Fact 和 Evidence 各有自己的审核状态。关联关系使用同一份数据，编辑 Fact 或 Evidence 会影响所有引用它的 Query。
+
+| 入口 | 审核对象和操作 |
+| --- | --- |
+| Query 审核台 `#workbench?query=Q00092` | 审核问题、变体、预期行为及 Query 的 Fact 评分规则，并试检索。 |
+| Fact 审核台 `#fact-review?fact=F027` | 核对事实陈述和证据链，搜索并关联已有 Evidence，解除关联，设置 OR / AND，查看或编辑 Evidence 及来源 Chunk。Fact 无须先关联 Query。 |
+| Fact 库 `#facts?fact=F027` | 编辑事实陈述、分类和全局审核状态；“去关联证据”进入所选 Fact 的审核台。 |
+| 证据库 `#evidence` | 检索候选 Chunk、核对来源并起草 Evidence，查看证据库存。 |
+
+Query 审核台以 Query–Fact 关系为编辑目标。左栏显示当前问题、变体、预期行为和评分概况；中栏搜索 Facts，支持“全部 / 已勾选”筛选，并设置必需单项、必需组、任选组、可选和禁止规则。右栏展示所选 Fact 的陈述与已有 Evidence、来源 Chunk，只读核对证据链；需要修改证据时进入该 Fact 的审核台。
+
+Query 页面的“保存 Fact 关联”调用 `POST /api/golden/query-facts/manage`，保存当前 Query 的 Fact 集合和评分规则。“保存并下一条 Query”保存成功后才切换问题。“确认 Query”先保存待处理的 Fact 规则，再确认当前 Query。“保存并试检索”先保存所选规则，再使用当前 Query 执行召回验证。保存失败时保留草稿，不继续确认、切换或试检索。Query 审核台不编辑 Fact–Evidence 关系或证据的 OR / AND。
+
+Fact 的全局审核状态保留显式编辑入口。只有用户修改过的状态才随关联提交，状态变化会影响所有引用该 Fact 的 Query。
+
+Fact 审核台以选中的 Fact 为操作目标。引用它的 Query 只作为上下文展示。搜索、预览 Evidence 和保存关联均保留该 Fact，关联操作不会确认 Query。原有 `#workbench?fact=F027` 链接进入 Fact 审核台；同时指定 `query` 的链接仍进入 Query 审核台。
+
+Evidence 的独立审核职责是核对摘录、来源 Chunk 和全局审核状态。当前证据库主要处理检索与草稿，尚未提供完整的独立 Evidence 审核队列。
+
+### 录入与审核
+
 1. 事实库手工录入 Fact，或从 Fact 起草 Query。
 2. 起草 Query：服务端把所选 Fact 交给 LLM，返回 1 条 canonical 和若干同义句、口语化、追问候选；人工挑选后落库。批量提交时，候选列表中的第一条 Query 成为 canonical，后续 canonical 建议降级为 paraphrase，所有变体通过 `parent_query_id` 指向该主问。
 3. 工作台或构造 Query 页面把 Fact 分配到必需单项、必需组、任选组、可选或禁止。必需组的所有成员都要命中，每个成员各计一项。每个任选组单独计一项，命中组内任一 Fact 即满足。
-4. 用 RAGFlow 检索或按文档浏览 Chunk。核对原文后，摘录一条可支撑 Fact 的 Evidence，并关联来源 Chunk。一个 Evidence 可以引用多个 Chunk；一个 Chunk 也可以被多条 Evidence 复用。
-5. 把 Evidence 关联到 Fact，并设置该 Fact 的 OR / AND 运算符。
-6. 点“试检索”：用当前 Query 调 RAGFlow，返回 Top-K 中命中的 gold chunk。必需单项和必需组成员逐条计分；每个任选组独立计一项，组内命中任一 Fact 即满足。
+4. 在 Fact 审核台检索或浏览 Chunk。核对原文后，摘录一条可支撑 Fact 的 Evidence，并关联来源 Chunk。一个 Evidence 可以引用多个 Chunk；一个 Chunk 也可以被多条 Evidence 复用。
+5. 在 Fact 审核台把 Evidence 关联到 Fact，并设置该 Fact 的 OR / AND 运算符。
+6. 在 Query 审核台点“保存并试检索”：用当前 Query 调 RAGFlow，返回 Top-K 中命中的 gold chunk。必需单项和必需组成员逐条计分；每个任选组独立计一项，组内命中任一 Fact 即满足。
 7. 确认后状态置为 `approved`，进入下一条。
 
 ### 证据库
@@ -118,7 +141,7 @@ Chunk 卡片上的 `禁用` / `启用` 会调用 RAGFlow `PATCH /api/v1/datasets
 
 服务端先校验完整数据，再写入发生变化的 JSONL 文件。成功响应会返回更新后的数据集状态，页面据此刷新 Evidence 和关联信息。保存失败时，页面保留可编辑草稿；重复使用的 Chunk 不会被锁定或复制成新的 Chunk。
 
-`送入工作台` 仍会把勾选的 Chunk 放进工作台选区。工作台的 `自动匹配` 按钮使用当前 Query 执行同一检索，并把候选送入工作台选区。
+`送入工作台` 把勾选的 Chunk 放进目标 Fact 审核台选区，用于摘录 Evidence。Query 审核台的试检索用于验证已经选择的 Facts，不把候选 Chunk 作为 Query–Fact 关联提交。
 
 召回口径：一条 Evidence 只要有一个关联 Chunk 进入 Top-K 就算命中；Fact 的 `OR` 表示任一 Evidence 命中即可，`AND` 表示全部 Evidence 命中。没有 group 的 `required` Fact 各计一项。必需组内每条 Fact 各计一项，组内所有 Fact 都要命中。每个 `required_any` group 独立计一项，命中其中任一 Fact 即满足；不同 group 分别计分。旧数据中没有 `group_id` 的 `required_any` Fact 共用默认组 `A1`。没有可用 Chunk 的必需成员会被标为不可评分；任选组只有在所有成员都没有 Chunk 时才是不可评分。
 
