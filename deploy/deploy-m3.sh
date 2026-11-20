@@ -32,7 +32,11 @@ fi
 mkdir -p "$HOME/apps" "$HOME/Library/LaunchAgents"
 mkdir -p "$DATA_DIR/golden-v1"
 if [[ -d "$APP_DIR/datasets/golden-v1" ]]; then
-  cp -Rn "$APP_DIR/datasets/golden-v1/." "$DATA_DIR/golden-v1/"
+  while IFS= read -r -d '' source_file; do
+    target_file="$DATA_DIR/golden-v1/${source_file#$APP_DIR/datasets/golden-v1/}"
+    mkdir -p "$(dirname "$target_file")"
+    [[ -f "$target_file" ]] || cp "$source_file" "$target_file"
+  done < <(find "$APP_DIR/datasets/golden-v1" -type f -print0)
 fi
 if [[ -f "$EVAL_CONFIG" && ! -f "$GOLDEN_CONFIG" ]]; then
   DATASET_IDS="$(sed -n 's/^RAGFLOW_DATASET_IDS=//p' "$EVAL_CONFIG" | head -n 1)"
