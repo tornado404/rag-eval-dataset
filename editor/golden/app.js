@@ -430,6 +430,32 @@ function findEvidenceCandidate(id) {
   return ui.evidenceWorkspace.candidates.find((item) => item.chunk_id === id) || null;
 }
 
+function ragflowChunkAvailabilityRow(chunkId) {
+  const workspace = ui.evidenceWorkspace;
+  const records = [
+    localChunk(chunkId),
+    ...workspace.candidates,
+    ...workspace.candidatesByMode.keyword,
+    ...workspace.candidatesByMode.query,
+    workspace.selectedChunks.get(chunkId),
+    ui.remoteChunks.find((item) => item.chunk_id === chunkId),
+  ].filter((item) => item?.chunk_id === chunkId);
+  const ragflowRecords = records.filter((item) => text(item.source || 'ragflow') === 'ragflow');
+  const target = ragflowRecords.find((item) => text(item.dataset_id) && text(item.document_id))
+    || ragflowRecords[0];
+  if (!target) return null;
+  const availability = ragflowRecords.find((item) => item.available !== undefined || item.available_int !== undefined);
+  return {
+    ...target,
+    dataset_id: text(target.dataset_id) || text(ragflowRecords.find((item) => text(item.dataset_id))?.dataset_id),
+    document_id: text(target.document_id) || text(ragflowRecords.find((item) => text(item.document_id))?.document_id),
+    ...(availability ? {
+      available: availability.available,
+      available_int: availability.available_int,
+    } : {}),
+  };
+}
+
 function chunkIsAvailable(row) {
   if (row?.available === true || row?.available === 1 || row?.available === '1') return true;
   if (row?.available_int === true || row?.available_int === 1 || row?.available_int === '1') return true;
@@ -439,10 +465,12 @@ function chunkIsAvailable(row) {
   return true;
 }
 
-function availabilityButton(row, action) {
-  if (!row || text(row.source || 'ragflow') !== 'ragflow' || !text(row.dataset_id) || !text(row.document_id)) return '';
-  const label = chunkIsAvailable(row) ? '禁用' : '启用';
-  return `<button class="btn btn-sm btn-outline" data-action="${attr(action)}" data-id="${attr(row.chunk_id)}" type="button" title="${attr(label)} Chunk（调用 RAGFlow）" aria-label="${attr(label)} Chunk ${attr(row.chunk_id)}">${esc(label)}</button>`;
+function availabilityButton(row, className = '') {
+  const target = row?.chunk_id ? ragflowChunkAvailabilityRow(row.chunk_id) || row : null;
+  if (!target || text(target.source || 'ragflow') !== 'ragflow' || !text(target.dataset_id) || !text(target.document_id)) return '';
+  const label = chunkIsAvailable(target) ? '禁用' : '启用';
+  const operation = chunkIsAvailable(target) ? 'set-chunk-unavailable' : 'set-chunk-available';
+  return `<button class="btn btn-sm btn-outline ${attr(className)}" data-action="${attr(operation)}" data-id="${attr(target.chunk_id)}" type="button" title="${attr(label)} Chunk（调用 RAGFlow）" aria-label="${attr(label)} Chunk ${attr(target.chunk_id)}">${esc(label)}</button>`;
 }
 
 function queryFactLinks(queryId) {
@@ -1707,7 +1735,7 @@ function renderChunkCandidate(row) {
         <div class="candidate-body">${esc(compactExcerpt(row.content, 220))}</div>
         <div class="candidate-foot">
           <button class="chunk-ref" data-action="preview-chunk" data-id="${attr(row.chunk_id)}" type="button">${esc(row.chunk_id)}</button>
-          ${availabilityButton(row, chunkIsAvailable(row) ? 'set-chunk-unavailable' : 'set-chunk-available')}
+          ${availabilityButton(row)}
           <span>${esc(pageLabel(row.page))}</span>
           ${row.document_id ? `<span class="truncate">${esc(row.document_id)}</span>` : ''}
         </div>
@@ -2994,7 +3022,8 @@ function renderEvidenceLibrary() {
           ${items.length ? items.map((row) => {
             const id = isEvidence ? row.evidence_id : row.chunk_id;
             const count = isEvidence ? chunkIdsOfEvidence(id).length : evidenceReferencingChunk(id).length;
-            return `<button class="relationship-queue-item ${workflow[key] === id ? 'active' : ''}" data-action="select-workspace-item" data-id="${attr(id)}" aria-current="${workflow[key] === id}" type="button" ${ui.busy ? 'disabled' : ''}><strong>${esc(isEvidence ? row.title || '未命名 Evidence' : row.document_name || row.document_id || '未命名文档')}</strong><span>${esc(compactExcerpt(isEvidence ? row.excerpt : row.content, 120))}</span><span class="relationship-queue-meta"><span class="mono">${esc(id)}</span>${isEvidence ? statusChip(row.status) : ''}<span class="chip ${count ? 'good' : 'warn'}">${count} ${isEvidence ? 'Chunk' : 'Evidence'}</span></span></button>`;
+            const item = `<button class="relationship-queue-item ${workflow[key] === id ? 'active' : ''}" data-action="select-workspace-item" data-id="${attr(id)}" aria-current="${workflow[key] === id}" type="button" ${ui.busy ? 'disabled' : ''}><strong>${esc(isEvidence ? row.title || '未命名 Evidence' : row.document_name || row.document_id || '未命名文档')}</strong><span>${esc(compactExcerpt(isEvidence ? row.excerpt : row.content, 120))}</span><span class="relationship-queue-meta"><span class="mono">${esc(id)}</span>${isEvidence ? statusChip(row.status) : ''}<span class="chip ${count ? 'good' : 'warn'}">${count} ${isEvidence ? 'Chunk' : 'Evidence'}</span></span></button>`;
+            return isEvidence ? item : `<div class="relationship-queue-entry">${item}${availabilityButton(row, 'relationship-queue-availability')}</div>`;
           }).join('') : emptyState({ title: collection.length ? '没有符合筛选的条目' : `${kind} 库为空`, copy: collection.length ? '清空搜索或切换“全部”继续处理。' : isEvidence ? '可切换“从 Chunk 处理”创建 Evidence。' : '展开右侧 RAGFlow 检索，查找原始 Chunk 后逐条处理。', compact: true })}
         </div>
       </aside>
@@ -3617,7 +3646,7 @@ async function releaseQueryClaimFromList(queryId) {
 }
 
 async function setRagflowChunkAvailability(chunkId, available) {
-  const chunk = findChunk(chunkId) || findEvidenceCandidate(chunkId);
+  const chunk = ragflowChunkAvailabilityRow(chunkId);
   if (!chunk) {
     toast('找不到目标 Chunk', 'error');
     return;
@@ -3629,7 +3658,6 @@ async function setRagflowChunkAvailability(chunkId, available) {
     return;
   }
   const label = available ? '启用' : '禁用';
-  if (!window.confirm(`确认${label} Chunk ${chunk.chunk_id}？此操作会调用 RAGFlow 并改变检索可用性；${available ? '启用后该 Chunk 可重新参与 RAGFlow 检索' : '禁用后该 Chunk 在重新启用前不再参与 RAGFlow 检索'}。是否继续？`)) return;
   if (ui.busy) return;
   ui.busy = true;
   render();

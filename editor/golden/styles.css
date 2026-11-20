@@ -2391,10 +2391,18 @@ textarea::placeholder {
   overscroll-behavior: contain;
 }
 
+.relationship-queue-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
 .relationship-queue-item {
   display: grid;
   gap: 7px;
   width: 100%;
+  min-width: 0;
   padding: 14px;
   border: 0;
   border-bottom: 1px solid var(--line);
@@ -2403,6 +2411,15 @@ textarea::placeholder {
   color: var(--text-2);
   text-align: left;
   overflow-wrap: anywhere;
+}
+
+.relationship-queue-entry .relationship-queue-item {
+  border-bottom: 0;
+}
+
+.relationship-queue-availability {
+  margin-right: 12px;
+  white-space: nowrap;
 }
 
 .relationship-queue-item:hover {

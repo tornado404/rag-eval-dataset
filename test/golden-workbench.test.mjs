@@ -34,7 +34,7 @@ function evidenceFixture() {
   const state = fixture();
   state.evidences.push({ evidence_id: 'E_TEST_003', title: '共享来源证据', excerpt: '共享来源的另一条可核验摘录。', status: 'draft' });
   state.chunks = [
-    { chunk_id: 'C_TEST_001', content: '第一段完整原文。', document_name: '操作说明', source: 'ragflow' },
+    { chunk_id: 'C_TEST_001', content: '第一段完整原文。', document_name: '操作说明', dataset_id: 'DS_TEST_001', document_id: 'DOC_TEST_001', source: 'ragflow', available: true },
     { chunk_id: 'C_TEST_002', content: '第二段共享原文。', document_name: '操作说明', source: 'ragflow' },
     { chunk_id: 'C_TEST_003', content: '尚未关联证据的完整原文。', document_name: '补充说明', source: 'ragflow' },
   ];
@@ -100,6 +100,11 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     async searchRagflow(body) {
       calls.push({ type: 'search', body: structuredClone(body) });
       return { chunks: structuredClone(options.searchChunks || []) };
+    },
+    async setRagflowChunkAvailability(body) {
+      calls.push({ type: 'availability', body: structuredClone(body) });
+      if (options.rejectAvailability) throw new Error('RAGFlow availability update failed');
+      return structuredClone(body);
     },
   };
   const context = vm.createContext({
@@ -500,6 +505,27 @@ test('Chunk processing exposes shared references and appends to an existing Evid
   await app.click('bind-workspace-chunk');
   assert.deepEqual(app.calls, [{ type: 'evidence-chunks', evidenceId: 'E_TEST_001', chunkIds: ['C_TEST_001', 'C_TEST_002', 'C_TEST_003'] }]);
   assert.match(app.html, /data-workspace-chunk="C_TEST_003"/);
+});
+
+test('a Chunk queue item directly calls RAGFlow to disable the selected chunk', async () => {
+  const app = await openApp('#evidence', evidenceFixture());
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  await app.click('set-chunk-unavailable', { id: 'C_TEST_001' });
+  assert.deepEqual(app.calls, [{
+    type: 'availability',
+    body: { dataset_id: 'DS_TEST_001', document_id: 'DOC_TEST_001', chunk_ids: ['C_TEST_001'], available: false },
+  }]);
+  assert.match(app.html, /data-workspace-chunk="C_TEST_001"/);
+  assert.match(app.html, /data-action="set-chunk-available" data-id="C_TEST_001"[^>]*>启用<\/button>/);
+});
+
+test('a failed RAGFlow availability request leaves the Chunk enabled for retry', async () => {
+  const app = await openApp('#evidence', evidenceFixture(), { rejectAvailability: true });
+  await app.click('set-workspace-direction', { direction: 'chunk' });
+  await app.click('set-chunk-unavailable', { id: 'C_TEST_001' });
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.serverState.chunks[0].available, true);
+  assert.match(app.html, /data-action="set-chunk-unavailable" data-id="C_TEST_001"[^>]*>禁用<\/button>/);
 });
 
 test('Chunk navigation clears its pending target and keeps every snapshot Chunk available', async () => {
