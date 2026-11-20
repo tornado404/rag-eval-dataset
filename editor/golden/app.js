@@ -375,6 +375,25 @@ function findChunk(id) {
   return localChunk(id) || ui.remoteChunks.find((chunk) => chunk.chunk_id === id) || null;
 }
 
+function findEvidenceCandidate(id) {
+  return ui.evidenceWorkspace.candidates.find((item) => item.chunk_id === id) || null;
+}
+
+function chunkIsAvailable(row) {
+  if (row?.available === true || row?.available === 1 || row?.available === '1') return true;
+  if (row?.available_int === true || row?.available_int === 1 || row?.available_int === '1') return true;
+  if (row?.available === false || row?.available === 0 || row?.available === '0') return false;
+  if (row?.available_int === false || row?.available_int === 0 || row?.available_int === '0') return false;
+  if (row?.available !== undefined || row?.available_int !== undefined) return false;
+  return true;
+}
+
+function availabilityButton(row, action) {
+  if (!row || text(row.source || 'ragflow') !== 'ragflow' || !text(row.dataset_id) || !text(row.document_id)) return '';
+  const label = chunkIsAvailable(row) ? '禁用' : '启用';
+  return `<button class="btn btn-sm btn-outline" data-action="${attr(action)}" data-id="${attr(row.chunk_id)}" type="button" title="${attr(label)} Chunk（调用 RAGFlow）" aria-label="${attr(label)} Chunk ${attr(row.chunk_id)}">${esc(label)}</button>`;
+}
+
 function queryFactLinks(queryId) {
   return rows('query_facts').filter((row) => row.query_id === queryId);
 }
@@ -1465,6 +1484,7 @@ function renderChunkCandidate(row) {
         <div class="candidate-body">${esc(compactExcerpt(row.content, 220))}</div>
         <div class="candidate-foot">
           <button class="chunk-ref" data-action="preview-chunk" data-id="${attr(row.chunk_id)}" type="button">${esc(row.chunk_id)}</button>
+          ${availabilityButton(row, chunkIsAvailable(row) ? 'set-chunk-unavailable' : 'set-chunk-available')}
           <span>${esc(pageLabel(row.page))}</span>
           ${row.document_id ? `<span class="truncate">${esc(row.document_id)}</span>` : ''}
         </div>
@@ -2715,6 +2735,7 @@ function renderEvidenceAutoCandidate(candidate) {
         <div class="candidate-body">${esc(compactExcerpt(candidate.content, 220))}</div>
         <div class="candidate-foot evidence-candidate-foot">
           <button class="chunk-ref" data-action="preview-evidence-candidate" data-id="${attr(candidate.chunk_id)}" type="button" title="展开完整原文">${esc(candidate.chunk_id)}</button>
+          ${availabilityButton(candidate, chunkIsAvailable(candidate) ? 'set-chunk-unavailable' : 'set-chunk-available')}
           <span>${icon('doc')} ${esc(pageLabel(candidate.page))}</span>
           ${candidate.dataset_id ? `<span class="mono">${esc(candidate.dataset_id)}</span>` : ''}
           ${candidate.matched_fact_ids.length ? `<span>命中 Fact：${candidate.matched_fact_ids.map((id) => esc(id)).join('、')}</span>` : '<span class="faint">未标注命中 Fact</span>'}
@@ -3164,6 +3185,57 @@ async function runMutation(task, { success = '', after = null } = {}) {
     toast(apiErrorText(error), 'error');
     render();
     return null;
+  }
+}
+
+async function setRagflowChunkAvailability(chunkId, available) {
+  const chunk = findChunk(chunkId) || findEvidenceCandidate(chunkId);
+  if (!chunk) {
+    toast('找不到目标 Chunk', 'error');
+    return;
+  }
+  const datasetId = text(chunk.dataset_id);
+  const documentId = text(chunk.document_id);
+  if (!datasetId || !documentId) {
+    toast('该 Chunk 缺少 dataset_id 或 document_id，无法更新 RAGFlow 可用性', 'error');
+    return;
+  }
+  const label = available ? '启用' : '禁用';
+  if (!window.confirm(`确认${label} Chunk ${chunk.chunk_id}？此操作会调用 RAGFlow 并改变检索可用性；${available ? '启用后该 Chunk 可重新参与 RAGFlow 检索' : '禁用后该 Chunk 在重新启用前不再参与 RAGFlow 检索'}。是否继续？`)) return;
+  if (ui.busy) return;
+  ui.busy = true;
+  render();
+  try {
+    await api.setRagflowChunkAvailability({
+      dataset_id: datasetId,
+      document_id: documentId,
+      chunk_ids: [chunk.chunk_id],
+      available,
+    });
+    const patchAvailability = (item) => item?.chunk_id === chunk.chunk_id
+      ? { ...item, available, available_int: available ? 1 : 0 }
+      : item;
+    ui.remoteChunks = ui.remoteChunks.map(patchAvailability);
+    if (ui.data?.chunks) ui.data.chunks = ui.data.chunks.map(patchAvailability);
+    for (const key of ['keyword', 'query']) {
+      const candidates = ui.evidenceWorkspace.candidatesByMode[key];
+      if (candidates) ui.evidenceWorkspace.candidatesByMode[key] = candidates.map(patchAvailability);
+    }
+    ui.evidenceWorkspace.candidates = ui.evidenceWorkspace.candidates.map(patchAvailability);
+    for (const [id, selected] of ui.evidenceWorkspace.selectedChunks) {
+      if (id === chunk.chunk_id) ui.evidenceWorkspace.selectedChunks.set(id, patchAvailability(selected));
+    }
+    if (localChunk(chunk.chunk_id)) {
+      const local = localChunk(chunk.chunk_id);
+      local.available = available;
+      local.available_int = available ? 1 : 0;
+    }
+    toast(`${label} Chunk ${chunk.chunk_id} 成功，已调用 RAGFlow`, 'success');
+  } catch (error) {
+    toast(apiErrorText(error), 'error');
+  } finally {
+    ui.busy = false;
+    render();
   }
 }
 
@@ -4200,6 +4272,10 @@ async function dispatchClickAction(action, element) {
       ui.previewChunkId = chunkId;
       render();
     }
+  } else if (action === 'set-chunk-unavailable') {
+    await setRagflowChunkAvailability(element.dataset.id || '', false);
+  } else if (action === 'set-chunk-available') {
+    await setRagflowChunkAvailability(element.dataset.id || '', true);
   } else if (action === 'preview-evidence') {
     const evidenceId = element.dataset.id || '';
     if (ui.screen !== 'workbench') openEvidenceInWorkbench(evidenceId);
@@ -4376,6 +4452,7 @@ async function handleClick(event) {
     && event.target !== element) {
     return;
   }
+  if (action === 'set-chunk-available' || action === 'set-chunk-unavailable') event.stopPropagation();
   if (element.tagName === 'A') event.preventDefault();
   try {
     await dispatchClickAction(action, element);
