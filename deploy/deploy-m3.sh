@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap 'status=$?; echo "DEPLOY_ERROR line=${BASH_LINENO[0]} status=$status command=$BASH_COMMAND" >&2; exit "$status"' ERR
 
 if [[ -z "${GITHUB_WORKSPACE:-}" ]]; then
   echo "GITHUB_WORKSPACE is required; run this script from the deploy workflow" >&2
@@ -19,7 +20,7 @@ GOLDEN_PORT="4183"
 CONFIG_DIR="$HOME/.config/rag-eval-dataset"
 EVAL_CONFIG="$CONFIG_DIR/eval.env"
 GOLDEN_CONFIG="$CONFIG_DIR/golden.env"
-LAN_INTERFACE="$(route -n get default 2>/dev/null | awk '$1 == "interface:" {print $2; exit}')"
+LAN_INTERFACE="$({ route -n get default 2>/dev/null || true; } | awk '$1 == "interface:" {print $2; exit}')"
 LAN_IP=""
 if [[ -n "$LAN_INTERFACE" ]]; then
   LAN_IP="$(ipconfig getifaddr "$LAN_INTERFACE" 2>/dev/null || true)"
@@ -31,7 +32,11 @@ fi
 mkdir -p "$HOME/apps" "$HOME/Library/LaunchAgents"
 mkdir -p "$DATA_DIR/golden-v1"
 if [[ -d "$APP_DIR/datasets/golden-v1" ]]; then
-  cp -Rn "$APP_DIR/datasets/golden-v1/." "$DATA_DIR/golden-v1/"
+  while IFS= read -r -d '' source_file; do
+    target_file="$DATA_DIR/golden-v1/${source_file#$APP_DIR/datasets/golden-v1/}"
+    mkdir -p "$(dirname "$target_file")"
+    [[ -f "$target_file" ]] || cp "$source_file" "$target_file"
+  done < <(find "$APP_DIR/datasets/golden-v1" -type f -print0)
 fi
 if [[ -f "$EVAL_CONFIG" && ! -f "$GOLDEN_CONFIG" ]]; then
   DATASET_IDS="$(sed -n 's/^RAGFLOW_DATASET_IDS=//p' "$EVAL_CONFIG" | head -n 1)"

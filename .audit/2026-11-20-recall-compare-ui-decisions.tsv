@@ -1,0 +1,5 @@
+decision	choice	evidence	rejected	status
+worktree	feat/recall-chunk-compare from origin/main f71ad9e	git worktree add succeeded	reuse detached f71ad9e directly	done
+layout	Fact selector + two-pane expected/actual comparison	three prototype screenshots in /private/var/folders/vq/fzgtsy0j1xz00phbgttnlx1r0000gn/T/opencode/recall-compare-prototype	stack Fact cards with full text under each; density switcher in production	chosen
+data shape	modalState.selectedFactId plus existing report.facts and retrieval.chunks	/api/golden/recall already returns fact evidence, matched_chunk_ids, and full chunk content	expand assessRecall response or add server endpoint	chosen
+validation	npm run check plus live browser Q00002 modal	sample live response has 12 chunks with content and 4 report facts	unit-only verification	planned
