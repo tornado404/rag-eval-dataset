@@ -317,7 +317,13 @@ function sendAutoMatchCandidatesToWorkbench() {
   ui.centerTab = 'chunk';
   ui.selectedChunkIds = new Set([...ui.selectedChunkIds, ...candidates.map((candidate) => candidate.chunk_id)]);
   ui.previewChunkId = candidates[0].chunk_id;
-  navigate('workbench');
+  const navigation = currentNavigationParams();
+  navigate('workbench', {
+    query: navigation.query || ui.queryId,
+    fact: navigation.fact,
+    returnTo: navigation.returnTo || 'workbench',
+    evidence: navigation.evidence,
+  });
   render();
   toast(`已将 ${ui.selectedChunkIds.size} 个 Chunk 放入工作台选区`, 'success');
 }
@@ -876,26 +882,58 @@ function parseRoute() {
   const raw = location.hash.replace(/^#/, '') || 'workbench';
   const [screenName, queryString = ''] = raw.split('?');
   const screen = SCREENS.has(screenName) ? screenName : 'workbench';
-  return { screen, params: new URLSearchParams(queryString) };
+  return { screen, params: normalizeNavigationParams(new URLSearchParams(queryString)) };
+}
+
+function normalizeNavigationParams(input = {}) {
+  const source = input instanceof URLSearchParams ? input : new URLSearchParams(input);
+  const params = {};
+  const routedQuery = text(source.get('query'));
+  const routedFact = text(source.get('fact'));
+  const routedEvidence = text(source.get('evidence'));
+  if (query(routedQuery)) params.query = routedQuery;
+  if (fact(routedFact)) params.fact = routedFact;
+  if (evidence(routedEvidence)) params.evidence = routedEvidence;
+  const returnTo = text(source.get('returnTo'))
+    .split(',')
+    .map((screenName) => screenName.trim())
+    .filter((screenName) => SCREENS.has(screenName));
+  if (returnTo.length) params.returnTo = returnTo.join(',');
+  return params;
+}
+
+function extendReturnChain(params, screen) {
+  const chain = text(params.returnTo).split(',')[REDACTED];
+  return chain.includes(screen) ? chain.join(',') : [...chain, screen].join(',');
 }
 
 function applyRoute() {
   const route = parseRoute();
+  const params = route.params;
   ui.screen = route.screen;
-  if (ui.screen === 'evidence') {
-    evidenceSyncCurrentQuery();
-    if (!ui.evidenceWorkspace.inventory) loadEvidenceInventory({ silent: true }).then(() => render());
-  }
-  const routedQuery = route.params.get('query') || '';
-  if (routedQuery && query(routedQuery) && routedQuery !== ui.queryId) {
-    selectQuery(routedQuery, { resetEvidence: true });
-  }
-  const routedFact = route.params.get('fact') || '';
-  if (ui.screen === 'facts') {
+  const routedQuery = params.query || '';
+  const routedFact = params.fact || '';
+  const routedEvidence = params.evidence || '';
+  if (routedQuery && routedQuery !== ui.queryId) selectQuery(routedQuery, { resetEvidence: true });
+  if (routedFact && routedFact !== ui.factId) selectFact(routedFact, { resetEditor: true });
+  if (ui.screen === 'workbench') {
+    if (routedEvidence) loadEvidenceDraft(routedEvidence, routedFact || ui.factId);
+  } else if (ui.screen === 'facts') {
     if (routedFact) setFactDraft(routedFact);
     else if (!ui.factDraft) setFactDraft(ui.factId || rows('facts')[0]?.fact_id || '');
-  } else if (routedFact && fact(routedFact) && routedFact !== ui.factId) {
-    selectFact(routedFact, { resetEditor: true });
+  }
+  if (ui.screen === 'evidence') {
+    if (routedQuery || routedFact) {
+      const workspace = ui.evidenceWorkspace;
+      if (routedQuery) {
+        workspace.queryId = routedQuery;
+        workspace.queryText = text(query(routedQuery)?.text);
+      }
+      if (routedFact) workspace.factId = routedFact;
+    } else {
+      evidenceSyncCurrentQuery();
+    }
+    if (!ui.evidenceWorkspace.inventory) loadEvidenceInventory({ silent: true }).then(() => render());
   }
   ensureContext();
   render();
@@ -904,7 +942,7 @@ function applyRoute() {
 function navigate(screen, params = {}) {
   const safeScreen = SCREENS.has(screen) ? screen : 'workbench';
   const queryParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(normalizeNavigationParams(params))) {
     if (value !== undefined && value !== null && value !== '') queryParams.set(key, String(value));
   }
   const suffix = queryParams.size ? `?${queryParams}` : '';
@@ -1262,7 +1300,7 @@ function renderQueryPanel(row) {
         ${links.length ? `
           <div class="fact-list">
             ${coverage.map(({ fact: item, evidenceCount, chunkCount }) => `
-              <button class="fact-row ${item.fact_id === ui.factId ? 'active' : ''}" data-action="select-fact" data-id="${attr(item.fact_id)}" type="button">
+              <button class="fact-row ${item.fact_id === ui.factId ? 'active' : ''}" data-action="open-fact-library" data-id="${attr(item.fact_id)}" type="button">
                 <span class="fact-main">
                   <span class="fact-topline">
                     ${idChip(item.fact_id)}
@@ -2087,7 +2125,9 @@ function renderFactEditor() {
           <small>${isEdit ? `${queryLinks.length} 条 Query 引用` : '保存后自动分配 ID'}</small>
         </div>
         <div class="table-actions">
+          ${isEdit ? `<button class="btn btn-sm btn-outline" data-action="return-from-facts" type="button">${icon('left')} 返回</button>` : ''}
           ${isEdit ? `<button class="btn btn-sm btn-outline" data-action="open-fact-workbench" data-id="${attr(draft.fact_id)}" type="button">${icon('link')} 去关联证据</button>` : ''}
+          ${isEdit ? `<button class="btn btn-sm btn-outline" data-action="open-fact-evidence-review" data-id="${attr(draft.fact_id)}" type="button">${icon('database')} 证据审核</button>` : ''}
           ${isEdit ? `<button class="icon-btn link-danger" data-action="delete-fact" data-id="${attr(draft.fact_id)}" type="button" title="删除 Fact">${icon('trash')}</button>` : ''}
         </div>
       </div>
@@ -2154,6 +2194,7 @@ function renderFactEditor() {
                       <strong>${esc(row.evidence_id)} · ${esc(row.title)}</strong>
                       <small>${esc(compactExcerpt(row.excerpt, 110))} · ${count} Chunk</small>
                     </div>
+                    <button class="btn btn-sm btn-outline" data-action="open-fact-evidence" data-id="${attr(row.evidence_id)}" type="button">查看证据</button>
                     ${statusChip(row.status)}
                   </div>`;
               }).join('')}
@@ -2535,7 +2576,7 @@ function renderEvidenceLibrary() {
           <button class="btn btn-outline" data-action="refresh-evidence-inventory" type="button" ${loading ? 'disabled' : ''}>
             ${icon('refresh')} 刷新库存
           </button>
-          <button class="btn btn-primary" data-action="navigate" data-screen="workbench" type="button">${icon('link')} 回到工作台</button>
+          <button class="btn btn-primary" data-action="return-from-evidence" type="button">${icon('left')} 返回</button>
         </div>
       </div>
 
@@ -3255,14 +3296,34 @@ function closeModal() {
 }
 
 function navigationParams(element) {
-  const params = {};
   const raw = element.dataset.params || '';
-  if (raw) {
-    for (const [key, value] of new URLSearchParams(raw)) params[key] = value;
-  }
-  if (element.dataset.query) params.query = element.dataset.query;
-  if (element.dataset.fact) params.fact = element.dataset.fact;
-  return params;
+  const source = raw ? new URLSearchParams(raw) : new URLSearchParams();
+  if (element.dataset.query) source.set('query', element.dataset.query);
+  if (element.dataset.fact) source.set('fact', element.dataset.fact);
+  return normalizeNavigationParams(source);
+}
+
+function currentNavigationParams() {
+  return normalizeNavigationParams(parseRoute().params);
+}
+
+function returnNavigationParams(params = currentNavigationParams()) {
+  const chain = text(params.returnTo).split(',')[REDACTED];
+  const remaining = chain.slice(0, -1);
+  if (!remaining.includes('workbench')) remaining.unshift('workbench');
+  return {
+    query: params.query,
+    fact: params.fact,
+    evidence: params.evidence,
+    returnTo: remaining.join(','),
+  };
+}
+
+function navigateFromReturnChain() {
+  const params = currentNavigationParams();
+  const chain = text(params.returnTo).split(',')[REDACTED];
+  const nextScreen = chain.at(-1) || 'workbench';
+  navigate(nextScreen, returnNavigationParams(params));
 }
 
 function moveToQuery(queryId, factId = '') {
@@ -3274,6 +3335,16 @@ function moveToQuery(queryId, factId = '') {
   selectQuery(queryId, { resetEvidence: true });
   if (factId && fact(factId)) selectFact(factId, { resetEditor: true });
   navigate('workbench', { query: queryId, fact: factId });
+}
+
+function workbenchEvidenceParams(queryId = '', factId = '', evidenceId = '') {
+  const navigation = currentNavigationParams();
+  return {
+    query: queryId || navigation.query || ui.queryId,
+    fact: factId || navigation.fact || '',
+    returnTo: navigation.returnTo || 'workbench',
+    evidence: evidenceId,
+  };
 }
 
 function openEvidenceInWorkbench(evidenceId) {
@@ -3296,7 +3367,11 @@ function openEvidenceInWorkbench(evidenceId) {
   selectQuery(queryId, { resetEvidence: true });
   if (fact(linkedFactId)) selectFact(linkedFactId, { resetEditor: false });
   loadEvidenceDraft(evidenceId, fact(linkedFactId) ? linkedFactId : ui.factId);
-  navigate('workbench', { query: queryId, fact: fact(linkedFactId) ? linkedFactId : '' });
+  navigate('workbench', workbenchEvidenceParams(
+    queryId,
+    fact(linkedFactId) ? linkedFactId : currentNavigationParams().fact,
+    evidenceId,
+  ));
 }
 
 function openQueryFacts(queryId) {
@@ -3912,7 +3987,23 @@ function openFactWorkbench(factId) {
     toast('这条 Fact 还没有关联 Query，先到 Query 清单补充依赖', 'info');
     return;
   }
-  moveToQuery(queryLink.query_id, factId);
+  const sourceQueryId = currentNavigationParams().query || queryLink.query_id;
+  const sourceQueryLink = sourceQueryId
+    ? rows('query_facts').find((link) => link.query_id === sourceQueryId && link.fact_id === factId)
+    : null;
+  const targetQueryId = sourceQueryLink ? sourceQueryId : queryLink.query_id;
+  if (!sourceQueryLink) {
+    toast('这条 Fact 不属于来源 Query，已按实际关联打开', 'info');
+  }
+  const params = currentNavigationParams();
+  ui.modal = null;
+  selectQuery(targetQueryId, { resetEvidence: true });
+  if (fact(factId)) selectFact(factId, { resetEditor: true });
+  navigate('workbench', {
+    query: targetQueryId,
+    fact: factId,
+    returnTo: extendReturnChain({ returnTo: params.returnTo || 'workbench' }, 'facts'),
+  });
 }
 
 async function saveQueryEdit() {
@@ -3969,7 +4060,8 @@ async function confirmDelete() {
         if (ui.factDraft?.fact_id === modalState.id) setFactDraft(rows('facts')[0]?.fact_id || '');
       }
       if (modalState.entityType === 'queries' && ui.screen === 'workbench') {
-        navigate('workbench', { query: ui.queryId });
+        const navigation = currentNavigationParams();
+        navigate('workbench', { query: ui.queryId, returnTo: navigation.returnTo });
       }
     },
   });
@@ -4152,7 +4244,9 @@ function handleChange(event) {
 async function dispatchClickAction(action, element) {
   if (action === 'navigate') {
     ui.modal = null;
-    navigate(element.dataset.screen || 'workbench', navigationParams(element));
+    const explicitParams = navigationParams(element);
+    const params = Object.keys(explicitParams).length ? explicitParams : currentNavigationParams();
+    navigate(element.dataset.screen || 'workbench', params);
     if (ui.screen === 'evidence' && !ui.evidenceWorkspace.inventory) loadEvidenceInventory();
   } else if (action === 'retry-load') {
     await retryInitialLoad();
@@ -4161,6 +4255,17 @@ async function dispatchClickAction(action, element) {
     if (nextId) moveToQuery(nextId);
   } else if (action === 'select-query-id') {
     moveToQuery(element.dataset.id || '');
+  } else if (action === 'open-fact-library') {
+    const factId = element.dataset.id || '';
+    if (!fact(factId)) return;
+    setFactDraft(factId);
+    const navigation = currentNavigationParams();
+    const params = {
+      query: ui.queryId,
+      fact: factId,
+      returnTo: extendReturnChain(navigation, 'workbench'),
+    };
+    navigate('facts', params);
   } else if (action === 'select-fact') {
     const factId = element.dataset.id || '';
     if (!fact(factId)) return;
@@ -4191,7 +4296,13 @@ async function dispatchClickAction(action, element) {
     ui.evidenceWorkspace.selectionOrder = normalized.map((candidate) => candidate.chunk_id);
     sendAutoMatchCandidatesToWorkbench();
   } else if (action === 'show-auto-match-candidates') {
-    navigate('evidence');
+    const navigation = currentNavigationParams();
+    navigate('evidence', {
+      query: navigation.query || ui.queryId,
+      fact: navigation.fact,
+      evidence: navigation.evidence,
+      returnTo: navigation.returnTo || 'workbench',
+    });
     if (!ui.evidenceWorkspace.inventory) loadEvidenceInventory();
   } else if (action === 'refresh-evidence-inventory') {
     await loadEvidenceInventory();
@@ -4389,12 +4500,21 @@ async function dispatchClickAction(action, element) {
     render();
   } else if (action === 'new-fact') {
     setFactDraft('');
-    navigate('facts');
+    const navigation = currentNavigationParams();
+    navigate('facts', {
+      query: navigation.query,
+      returnTo: navigation.returnTo || 'workbench',
+    });
   } else if (action === 'select-fact-draft') {
     const factId = element.dataset.id || '';
     if (!fact(factId)) return;
     setFactDraft(factId);
-    navigate('facts', { fact: factId });
+    const navigation = currentNavigationParams();
+    navigate('facts', {
+      query: navigation.query,
+      fact: factId,
+      returnTo: navigation.returnTo || 'workbench',
+    });
   } else if (action === 'save-fact') {
     await saveFact();
   } else if (action === 'delete-fact') {
@@ -4407,6 +4527,30 @@ async function dispatchClickAction(action, element) {
     );
   } else if (action === 'open-fact-workbench') {
     openFactWorkbench(element.dataset.id || '');
+  } else if (action === 'return-from-facts') {
+    navigateFromReturnChain();
+  } else if (action === 'return-from-evidence') {
+    navigateFromReturnChain();
+  } else if (action === 'open-fact-evidence') {
+    const evidenceId = element.dataset.id || '';
+    if (!evidence(evidenceId)) return;
+    const params = currentNavigationParams();
+    navigate('workbench', {
+      query: params.query || ui.queryId,
+      fact: params.fact || ui.factId,
+      returnTo: extendReturnChain(params, 'facts'),
+      evidence: evidenceId,
+    });
+  } else if (action === 'open-fact-evidence-review') {
+    const factId = element.dataset.id || '';
+    if (!fact(factId)) return;
+    const params = currentNavigationParams();
+    navigate('evidence', {
+      query: params.query || ui.queryId,
+      fact: factId,
+      returnTo: extendReturnChain(params, 'facts'),
+    });
+    if (!ui.evidenceWorkspace.inventory) loadEvidenceInventory();
   } else if (action === 'clear-fact-search') {
     ui.factSearch = '';
     render();
