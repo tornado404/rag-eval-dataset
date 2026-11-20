@@ -99,7 +99,12 @@ const RULES = [
           errors.push(diag(this.id, 'MANIFEST.json', 1, `listed dataset directory does not exist: datasets/${version}`));
         }
       }
-      if (!listed.includes(context.rootManifest.current_version)) errors.push(diag(this.id, 'MANIFEST.json', 1, `current_version ${context.rootManifest.current_version} is not listed in versions`));
+      if (listed.length && !listed.includes(context.rootManifest.current_version)) {
+        errors.push(diag(this.id, 'MANIFEST.json', 1, `current_version ${context.rootManifest.current_version} is not listed in versions`));
+      }
+      if (!listed.length && context.rootManifest.current_version !== null) {
+        errors.push(diag(this.id, 'MANIFEST.json', 1, 'current_version must be null when no public dataset versions are listed'));
+      }
       return errors;
     },
   },
@@ -183,7 +188,7 @@ const packageJson = packageSource ? parseJson(packageSource).value : null;
 const scripts = packageJson?.scripts || {};
 if (scripts.lint !== 'node scripts/lint.mjs') errors.push(diag('package-scripts', 'package.json', 1, 'script lint must be "node scripts/lint.mjs"'));
 if (scripts.check !== 'npm run lint && npm run validate && npm test') errors.push(diag('package-scripts', 'package.json', 1, 'script check must run lint, validate, and test'));
-if (scripts.test !== 'node --test test') errors.push(diag('package-scripts', 'package.json', 1, 'script test must be "node --test test"'));
+if (scripts.test !== 'node --test') errors.push(diag('package-scripts', 'package.json', 1, 'script test must be "node --test"'));
 
 const workflow = contents.get('.github/workflows/validate.yml') || '';
 if (!/(?:^|\s)npm run check(?:\s|$)/m.test(workflow)) {

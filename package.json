@@ -2,7 +2,7 @@
   "name": "rag-eval-dataset",
   "version": "0.1.0",
   "private": true,
-  "description": "Editable, git-tracked RAGFlow evaluation datasets for Recall@12 and HIT.",
+  "description": "Tools for evaluating RAG retrieval and answer behavior with separately provisioned datasets.",
   "scripts": {
     "editor": "node editor/server.mjs",
     "golden": "node editor/golden-server.mjs",
@@ -11,7 +11,7 @@
     "lint": "node scripts/lint.mjs",
     "check": "npm run lint && npm run validate && npm test",
     "validate": "node scripts/validate.mjs",
-    "test": "node --test test"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"

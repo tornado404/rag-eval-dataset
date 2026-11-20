@@ -1,0 +1,10 @@
+{
+  "schema_version": "golden-governance/v1",
+  "dataset_id": "golden-v1",
+  "core_tables": ["queries", "facts", "evidences", "chunks", "query_facts", "fact_evidence", "evidence_chunks"],
+  "review_subjects": ["query_fact", "fact_mapping", "split"],
+  "review_statuses": ["approved", "rejected"],
+  "split_statuses": ["proposed", "approved", "rejected"],
+  "split_assignments": ["train", "validation", "quarantined"],
+  "scoring_requirements": ["required", "required_any"]
+}

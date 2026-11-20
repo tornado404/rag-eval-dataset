@@ -16,13 +16,13 @@ const scored = (caseId, expectedAction, observedAction) => ({
 
 test('decision scoring uses scoreable cases and separates false refusal from false answer', () => {
   const result = scoreDecisionMetrics([
-    scored('C00001', 'answer', 'answer'),
-    scored('C00002', 'answer', 'refuse_domain'),
-    scored('C00003', 'answer', 'clarify'),
-    scored('C00004', '[REDACTED]', '[REDACTED]'),
-    scored('C00005', '[REDACTED]', 'answer'),
-    { case_id: 'C00079', expected_action: null, observed_action: 'answer', scoreable: false },
-    { case_id: 'C00080', expected_action: 'answer', observed_action: null, scoreable: true },
+    scored('CASE-001', 'answer', 'answer'),
+    scored('CASE-002', 'answer', 'refuse_domain'),
+    scored('CASE-003', 'answer', 'clarify'),
+    scored('CASE-004', '[REDACTED]', '[REDACTED]'),
+    scored('CASE-005', '[REDACTED]', 'answer'),
+    { case_id: 'CASE-006', expected_action: null, observed_action: 'answer', scoreable: false },
+    { case_id: 'CASE-007', expected_action: 'answer', observed_action: null, scoreable: true },
   ]);
 
   assert.equal(result.scoreable_cases, 6);
@@ -43,30 +43,30 @@ test('decision scoring uses scoreable cases and separates false refusal from fal
 test('recall scoring rejects not-retrieved cases and missing observations instead of counting misses', () => {
   const result = scoreRecallMetrics([
     {
-      case_id: 'C00001',
+      case_id: 'CASE-001',
       recall_cohort: true,
       retrieval_state: 'scored',
-      required_fact_ids: ['F00001'],
+      required_fact_ids: ['FACT-001'],
       final: { gold: { scorable_fact_count: 1, hit_fact_count: 1, k: 3 } },
       raw_ragflow: { gold: { scorable_fact_count: 1, hit_fact_count: 0, k: 12 } },
     },
     {
-      case_id: 'C00002',
+      case_id: 'CASE-002',
       recall_cohort: true,
       retrieval_state: 'not_retrieved',
-      required_fact_ids: ['F00002'],
+      required_fact_ids: ['FACT-002'],
       final: null,
       raw_ragflow: null,
     },
     {
-      case_id: 'C00003',
+      case_id: 'CASE-003',
       recall_cohort: true,
       retrieval_state: 'unavailable',
-      required_fact_ids: ['F00003'],
+      required_fact_ids: ['FACT-003'],
       final: null,
       raw_ragflow: null,
     },
-    { case_id: 'C00052', recall_cohort: false, retrieval_state: 'not_retrieved' },
+    { case_id: 'CASE-004', recall_cohort: false, retrieval_state: 'not_retrieved' },
   ]);
 
   assert.equal(result.cohort_cases, 3);
@@ -84,7 +84,7 @@ function report(overrides = {}) {
     status: 'complete',
     dataset: { digest: 'dataset-a', action_map: { digest: 'actions-a' } },
     metric_schema_version: '[REDACTED]',
-    evaluation: { top_k: 12, cohorts: { decision: 163, recall: 149 } },
+    evaluation: { top_k: 12, cohorts: { decision: 7, recall: 3 } },
     run: { build_sha: 'build-a', decision: { mode: 'enforce' } },
     summary: { decision: { accuracy: 0.8 }, final_grounding: { recall_at_k: 0.1 } },
     ...overrides,
@@ -112,26 +112,26 @@ test('report comparison shows confounders without blocking compatible deltas', (
   assert.equal(compared.deltas.final_recall_at_k, 0);
 });
 
-test('mixed provider and config are comparability confounders with per-run counts', () => {
+test('mixed providers and config are comparability confounders with per-run counts', () => {
   const base = report({
     run: { build_sha: 'build-a', decision: { mode: 'enforce' } },
     rows: [
-      { case_id: 'C00001', decision_trace: { source: 'jev', model_id: 'jev-v1', config_family: 'auto', config_preference: 'jev', fingerprint: 'fp-a', fallback_category: 'none' } },
-      { case_id: 'C00002', decision_trace: { source: 'jev', model_id: 'jev-v1', config_family: 'auto', config_preference: 'jev', fingerprint: 'fp-a', fallback_category: 'none' } },
+      { case_id: 'CASE-001', decision_trace: { source: 'backend-a', model_id: 'model-a', config_family: 'auto', config_preference: 'backend-a', fingerprint: 'fp-a', fallback_category: 'none' } },
+      { case_id: 'CASE-002', decision_trace: { source: 'backend-a', model_id: 'model-a', config_family: 'auto', config_preference: 'backend-a', fingerprint: 'fp-a', fallback_category: 'none' } },
     ],
   });
   const mixedProvider = report({
     run: { build_sha: 'build-a', decision: { mode: 'enforce' } },
     rows: [
-      { case_id: 'C00001', decision_trace: { source: 'jev', model_id: 'jev-v1', config_family: 'auto', config_preference: 'jev', fingerprint: 'fp-a', fallback_category: 'none' } },
-      { case_id: 'C00002', decision_trace: { source: 'qwen', model_id: 'qwen-v2', config_family: 'auto', config_preference: 'jev', fingerprint: 'fp-a', fallback_category: 'primary_unavailable' } },
+      { case_id: 'CASE-001', decision_trace: { source: 'backend-a', model_id: 'model-a', config_family: 'auto', config_preference: 'backend-a', fingerprint: 'fp-a', fallback_category: 'none' } },
+      { case_id: 'CASE-002', decision_trace: { source: 'backend-b', model_id: 'model-b', config_family: 'auto', config_preference: 'backend-a', fingerprint: 'fp-a', fallback_category: 'primary_unavailable' } },
     ],
   });
   const mixedConfig = report({
     run: { build_sha: 'build-a', decision: { mode: 'enforce' } },
     rows: [
-      { case_id: 'C00001', decision_trace: { source: 'jev', model_id: 'jev-v1', config_family: 'auto', config_preference: 'jev', fingerprint: 'fp-a', fallback_category: 'none' } },
-      { case_id: 'C00002', decision_trace: { source: 'jev', model_id: 'jev-v1', config_family: 'manual', config_preference: 'jev', fingerprint: 'fp-b', fallback_category: 'none' } },
+      { case_id: 'CASE-001', decision_trace: { source: 'backend-a', model_id: 'model-a', config_family: 'auto', config_preference: 'backend-a', fingerprint: 'fp-a', fallback_category: 'none' } },
+      { case_id: 'CASE-002', decision_trace: { source: 'backend-a', model_id: 'model-a', config_family: 'manual', config_preference: 'backend-a', fingerprint: 'fp-b', fallback_category: 'none' } },
     ],
   });
 
@@ -141,17 +141,17 @@ test('mixed provider and config are comparability confounders with per-run count
 
   assert.deepEqual(baseAttribution, {
     traced_cases: 2,
-    provider_counts: { jev: 2 },
-    model_counts: { 'jev-v1': 2 },
+    provider_counts: { 'backend-a': 2 },
+    model_counts: { 'model-a': 2 },
     config_family_counts: { auto: 2 },
-    config_preference_counts: { jev: 2 },
+    config_preference_counts: { 'backend-a': 2 },
     fingerprint_counts: { 'fp-a': 2 },
     fallback_counts: { none: 2 },
     mixed_provider: false,
     mixed_config: false,
   });
   assert.equal(mixedProviderAttribution.mixed_provider, true);
-  assert.deepEqual(mixedProviderAttribution.provider_counts, { jev: 1, qwen: 1 });
+  assert.deepEqual(mixedProviderAttribution.provider_counts, { 'backend-a': 1, 'backend-b': 1 });
   assert.deepEqual(mixedProviderAttribution.fallback_counts, { none: 1, primary_unavailable: 1 });
   assert.equal(mixedConfigAttribution.mixed_config, true);
 
@@ -163,34 +163,24 @@ test('mixed provider and config are comparability confounders with per-run count
   assert.ok(compared.confounders.includes('mixed provider'));
 });
 
-test('corpus coverage summary exposes gold and evidence-row coverage', () => {
+test('recall summary does not embed private dataset coverage metadata', () => {
   const result = scoreRecallMetrics([]);
-
-  assert.deepEqual(result.corpus_coverage.gold_datasets, {
-    covered: 3,
-    total_online: 7,
-    ids: ['DS01', 'DS02', 'DS03'],
-  });
-  assert.deepEqual(result.corpus_coverage.evidence_rows, { mapped: 479, total: 482, rate: 479 / 482 });
-  assert.deepEqual(result.corpus_coverage.required_facts, { scorable: 394, total: 394, rate: 1 });
-  assert.deepEqual(result.corpus_coverage.unmapped_evidence_ids, ['E00096', 'E00097', 'E00466']);
+  assert.equal(Object.hasOwn(result, 'corpus_coverage'), false);
 });
 
 test('report comparison includes coverage and per-case recall changes', () => {
   const base = report({
-    rows: [{ case_id: 'C00001', recall_cohort: true, retrieval_state: 'scored', final: { gold: { scorable_fact_count: 2, hit_fact_count: 0, k: 2, recall_at_k: 0 } }, raw_ragflow: { gold: { scorable_fact_count: 2, hit_fact_count: 0, k: 12, recall_at_k: 0 } } }],
+    rows: [{ case_id: 'CASE-001', recall_cohort: true, retrieval_state: 'scored', final: { gold: { scorable_fact_count: 2, hit_fact_count: 0, k: 2, recall_at_k: 0 } }, raw_ragflow: { gold: { scorable_fact_count: 2, hit_fact_count: 0, k: 12, recall_at_k: 0 } } }],
     summary: {
       decision: { accuracy: 0.8 },
-      corpus_coverage: { evidence_rows: { mapped: 479, total: 482 } },
       final_grounding: { recall_at_k: 0.1, cases_scored: 1, gold_facts_hit: 0, gold_facts_scored: 2 },
       ragflow_candidates_at_12: { recall_at_k: 0.2, cases_scored: 1, gold_facts_hit: 0, gold_facts_scored: 2 },
     },
   });
   const other = report({
-    rows: [{ case_id: 'C00001', recall_cohort: true, retrieval_state: 'scored', final: { gold: { scorable_fact_count: 2, hit_fact_count: 1, k: 2, recall_at_k: 0.5 } }, raw_ragflow: { gold: { scorable_fact_count: 2, hit_fact_count: 1, k: 12, recall_at_k: 0.5 } } }],
+    rows: [{ case_id: 'CASE-001', recall_cohort: true, retrieval_state: 'scored', final: { gold: { scorable_fact_count: 2, hit_fact_count: 1, k: 2, recall_at_k: 0.5 } }, raw_ragflow: { gold: { scorable_fact_count: 2, hit_fact_count: 1, k: 12, recall_at_k: 0.5 } } }],
     summary: {
       decision: { accuracy: 0.8 },
-      corpus_coverage: { evidence_rows: { mapped: 482, total: 482 } },
       final_grounding: { recall_at_k: 0.25, cases_scored: 2, gold_facts_hit: 1, gold_facts_scored: 4 },
       ragflow_candidates_at_12: { recall_at_k: 0.5, cases_scored: 2, gold_facts_hit: 1, gold_facts_scored: 4 },
     },
@@ -199,9 +189,8 @@ test('report comparison includes coverage and per-case recall changes', () => {
   const compared = compareReports(base, other);
   assert.equal(compared.deltas.final_gold_facts_hit, 1);
   assert.equal(compared.deltas.final_cases_scored, 1);
-  assert.equal(compared.deltas.mapped_evidence_rows, 3);
   assert.deepEqual(compared.recall_changes, [{
-    case_id: 'C00001',
+    case_id: 'CASE-001',
     base: { retrieval_state: 'scored', final_hit_fact_count: 0, raw_hit_fact_count: 0 },
     other: { retrieval_state: 'scored', final_hit_fact_count: 1, raw_hit_fact_count: 1 },
     final_hit_delta: 1,

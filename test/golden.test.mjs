@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 [REDACTED]
 [REDACTED]
+[REDACTED]
+[REDACTED]
 import test from 'node:test';
 import {
   GoldenError,
@@ -22,25 +24,25 @@ import {
 
 function fixture() {
   const state = emptyState('test');
-  state.queries.push({ query_id: 'Q0001', text: '这个药是药品还是保健品？', variant_type: 'canonical', status: 'draft', expected_behavior: 'answer' });
-  state.facts.push({ fact_id: 'F001', statement: 'Rayaldee 是药品。', fact_type: '[REDACTED]', importance: 'P0', status: 'draft' });
+  state.queries.push({ query_id: 'Q0001', text: '设备甲是什么类型？', variant_type: 'canonical', status: 'draft', expected_behavior: 'answer' });
+  state.facts.push({ fact_id: 'F001', statement: '设备甲 是设备。', fact_type: 'general', importance: 'P0', status: 'draft' });
   return state;
 }
 
 test('upsert creates ids, updates, and rejects duplicate query text', () => {
   const state = fixture();
-  const query = upsertEntity(state, 'queries', { text: '请问 Rayaldee 是不是药物？', variant_type: 'colloquial' }).row;
+  const query = upsertEntity(state, 'queries', { text: '设备甲 是不是设备？', variant_type: 'colloquial' }).row;
   assert.equal(query.query_id, 'Q0002');
   assert.equal(query.variant_type, 'colloquial');
 
-  upsertEntity(state, 'queries', { query_id: 'Q0002', text: '请告诉我 Rayaldee 是不是药物？', status: 'review' });
+  upsertEntity(state, 'queries', { query_id: 'Q0002', text: '设备甲 是不是设备？', status: 'review' });
   assert.equal(state.queries[1].status, 'review');
-  assert.equal(state.queries[1].text, '请告诉我 Rayaldee 是不是药物？');
+  assert.equal(state.queries[1].text, '设备甲 是不是设备？');
 
   assert.deepEqual(
     upsertEntity(state, 'chunks', {
       chunk_id: 'ck-a',
-      content: 'Rayaldee 是药品。',
+      content: '设备甲 是设备。',
       source: 'ragflow',
       dataset_id: 'ds-1',
       document_id: 'doc-1',
@@ -51,14 +53,14 @@ test('upsert creates ids, updates, and rejects duplicate query text', () => {
   );
 
   const state2 = fixture();
-  upsertEntity(state2, 'queries', { text: '请告诉我 Rayaldee 是不是药物？' });
-  upsertEntity(state2, 'queries', { text: '请告诉我 Rayaldee 是不是药物？' });
+  upsertEntity(state2, 'queries', { text: '设备甲 是不是设备？' });
+  upsertEntity(state2, 'queries', { text: '设备甲 是不是设备？' });
   assert.equal(validateState(state2).length > 0, true);
 });
 
 test('delete cascades relations and clears parent references', () => {
   const state = fixture();
-  state.facts.push({ fact_id: 'F002', statement: '成人每日 30 μg。', fact_type: '[REDACTED]', importance: 'P1', status: 'draft' });
+  state.facts.push({ fact_id: 'F002', statement: '设备支持 USB-C。', fact_type: 'general', importance: 'P1', status: 'draft' });
   state.query_facts.push({ query_id: 'Q0001', fact_id: 'F001', requirement: 'required' });
   state.query_facts.push({ query_id: 'Q0001', fact_id: 'F002', requirement: 'optional' });
   deleteEntity(state, 'queries', 'Q0001');
@@ -88,20 +90,31 @@ test('parent chain is one level and root deletion detaches every descendant', ()
 test('migration refuses to overwrite an existing seed dataset', () => {
   const root = path.resolve(import.meta.dirname, '..');
   const script = path.join(root, 'scripts', 'migrate-v15-to-golden.mjs');
-  assert.throws(
-    () => execFileSync(process.execPath, [script], { cwd: root, encoding: 'utf8', stdio: 'pipe' }),
-    (error) => /refusing to overwrite existing (golden dataset|migration cache)/.test(String(error.stderr || '')),
-  );
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'golden-migration-target-'));
+  fs.writeFileSync(path.join(dir, 'queries.jsonl'), '{}\n');
+  try {
+    assert.throws(
+      () => execFileSync(process.execPath, [script], {
+        cwd: root,
+        env: { ...process.env, GOLDEN_DATA_DIR: dir },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      }),
+      (error) => /refusing to overwrite existing golden dataset/.test(String(error.stderr || '')),
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('query bundle creates one canonical root with variants and shared facts', () => {
   const state = fixture();
-  state.facts.push({ fact_id: 'F002', statement: '成人每日 30 μg。', fact_type: '[REDACTED]', importance: 'P1', status: 'draft' });
+  state.facts.push({ fact_id: 'F002', statement: '设备支持 USB-C。', fact_type: 'general', importance: 'P1', status: 'draft' });
   const result = createQueryBundle(state, {
     queries: [
-      { text: 'Rayaldee 是药品还是保健品？', variant_type: 'paraphrase' },
-      { text: '这玩意算药吗？', variant_type: 'colloquial' },
-      { text: '它是正规药吗？', variant_type: 'canonical' },
+      { text: '设备甲 是设备还是软件？', variant_type: 'paraphrase' },
+      { text: '设备甲有哪些规格？', variant_type: 'colloquial' },
+      { text: '设备甲符合规格吗？', variant_type: 'canonical' },
     ],
     facts: [
       { fact_id: 'F001', requirement: 'required' },
@@ -122,13 +135,13 @@ test('evidence chunk relation is many-to-many and recall respects operator', () 
   const state = fixture();
   createEvidence(state, {
     title: '产品定位',
-    excerpt: 'Rayaldee 是缓释胶囊药品。',
-    chunks: [{ chunk_id: 'ck-a', content: 'Rayaldee 是药品。', document_name: 'C01.txt', page: 1 }],
+    excerpt: '设备甲 是无线配件设备。',
+    chunks: [{ chunk_id: 'ck-a', content: '设备甲 是设备。', document_name: 'C01.txt', page: 1 }],
   });
   createEvidence(state, {
     title: '另一证据',
     excerpt: '第二份摘录',
-    chunks: [{ chunk_id: 'ck-b', content: '它不是保健品。', document_name: 'C02.txt' }],
+    chunks: [{ chunk_id: 'ck-b', content: '它不是软件。', document_name: 'C02.txt' }],
   });
   state.query_facts.push({ query_id: 'Q0001', fact_id: 'F001', requirement: 'required' });
   applyFactEvidence(state, 'F001', ['E001', 'E002'], 'OR');
@@ -150,7 +163,7 @@ test('evidence chunk relation is many-to-many and recall respects operator', () 
 
 test('unscored required facts are reported separately', () => {
   const state = fixture();
-  state.facts.push({ fact_id: 'F002', statement: '无证据事实', fact_type: '[REDACTED]', importance: 'P1', status: 'draft' });
+  state.facts.push({ fact_id: 'F002', statement: '无证据事实', fact_type: 'general', importance: 'P1', status: 'draft' });
   state.query_facts.push({ query_id: 'Q0001', fact_id: 'F001', requirement: 'required' });
   state.query_facts.push({ query_id: 'Q0001', fact_id: 'F002', requirement: 'required' });
   createEvidence(state, { title: '证据', excerpt: '内容', chunks: [{ chunk_id: 'ck-a', content: '内容' }] });
@@ -194,7 +207,7 @@ test('invalid JSON returns a remote error', () => {
 });
 
 test('parseSuggestions accepts bare JSON and fenced JSON', () => {
-  const bare = parseSuggestions('{"canonical":"它是药品还是保健品？","variants":[{"text":"Rayaldee 算不算药物？","variant_type":"paraphrase"}]}', []);
+  const bare = parseSuggestions('{"canonical":"设备甲属于哪一类？","variants":[{"text":"设备甲 算不算设备？","variant_type":"paraphrase"}]}', []);
   assert.equal(bare.length, 2);
   assert.equal(bare[0].variant_type, 'canonical');
   assert.equal(bare[1].variant_type, 'paraphrase');
@@ -205,17 +218,20 @@ test('parseSuggestions accepts bare JSON and fenced JSON', () => {
 });
 
 test('parseSuggestions removes duplicates against existing queries', () => {
-  const result = parseSuggestions('{"canonical":"它是药品？","variants":[{"text":"它是药品吗？","variant_type":"colloquial"}]}', ['它是药品']);
-  assert.deepEqual(result, [{ text: '它是药品吗？', variant_type: 'colloquial', rationale: '' }]);
+  const result = parseSuggestions(
+    '{"canonical":"设备甲是什么类型？","variants":[{"text":"设备甲 算不算设备？","variant_type":"colloquial"},{"text":"设备甲算不算设备？","variant_type":"follow_up"}]}',
+    ['设备甲是什么类型？'],
+  );
+  assert.deepEqual(result, [{ text: '设备甲 算不算设备？', variant_type: 'colloquial', rationale: '' }]);
 });
 
 test('evidence draft polish keeps filled fields and fills only empty fields', () => {
   assert.deepEqual(
     parseEvidenceDraftPolish(
-      '```json\n{"title":"剂量说明","excerpt":"成人每日 30 μg。"}\n```',
+      '```json\n{"title":"规格说明","excerpt":"设备支持 USB-C。"}\n```',
       { title: '旧标题', excerpt: '' },
     ),
-    { title: '剂量说明', excerpt: '成人每日 30 μg。' },
+    { title: '规格说明', excerpt: '设备支持 USB-C。' },
   );
   assert.deepEqual(
     parseEvidenceDraftPolish('{"excerpt":" rewritten "}', { title: '旧标题', excerpt: '原文' }),
@@ -232,12 +248,12 @@ test('evidenceInventory counts m:n links and unlinked rows', () => {
   const state = fixture();
   state.chunks.push(
     { chunk_id: 'ck-a', content: 'Rayaldee 产品定位', source: 'ragflow' },
-    { chunk_id: 'ck-b', content: 'Rayaldee 剂量', source: 'ragflow' },
-    { chunk_id: 'ck-c', content: '骨化二醇背景', source: 'ragflow' },
+    { chunk_id: 'ck-b', content: '设备甲 规格', source: 'ragflow' },
+    { chunk_id: 'ck-c', content: '设备甲背景', source: 'ragflow' },
   );
   state.evidences.push(
-    { evidence_id: 'E001', title: '说明书', excerpt: 'Rayaldee 药品', status: 'draft' },
-    { evidence_id: 'E002', title: '剂量资料', excerpt: '成人每日 30 μg', status: 'draft' },
+    { evidence_id: 'E001', title: '产品文档', excerpt: '示例设备 设备', status: 'draft' },
+    { evidence_id: 'E002', title: '规格资料', excerpt: '设备支持 USB-C', status: 'draft' },
     { evidence_id: 'E003', title: '待补证据', excerpt: '尚缺 Chunk', status: 'draft' },
   );
   state.evidence_chunks.push(
@@ -266,37 +282,39 @@ test('evidenceInventory counts m:n links and unlinked rows', () => {
 
 test('autoMatchQuery ranks deterministically, filters, and does not mutate state', () => {
   const state = fixture();
-  state.facts.push({ fact_id: 'F002', statement: '成人每日 30 μg 骨化二醇。', topic: '用法用量', source_note: 'Rayaldee 说明书', fact_type: 'usage', importance: 'P0', status: 'draft' });
+  state.queries[0].text = 'What kind of product is Alpha01?';
+  state.facts[0].statement = 'Alpha01 is a wireless accessory.';
+  state.facts.push({ fact_id: 'F002', statement: 'Beta02 supports USB-C Alpha01.', topic: 'connectivity', source_note: 'Alpha01 product documentation', fact_type: 'general', importance: 'P0', status: 'draft' });
   state.query_facts.push(
     { query_id: 'Q0001', fact_id: 'F001', requirement: 'required' },
     { query_id: 'Q0001', fact_id: 'F002', requirement: 'required' },
   );
   state.evidences.push(
-    { evidence_id: 'E001', title: '产品定位证据', excerpt: 'Rayaldee 是药品。', status: 'draft' },
-    { evidence_id: 'E002', title: '剂量证据', excerpt: '成人每日 30 μg。', status: 'draft' },
+    { evidence_id: 'E001', title: 'Alpha01 product evidence', excerpt: 'Alpha01 is a wireless accessory.', status: 'draft' },
+    { evidence_id: 'E002', title: 'Beta02 connection evidence', excerpt: 'Beta02 supports USB-C.', status: 'draft' },
   );
   state.fact_evidence.push(
     { fact_id: 'F001', evidence_ids: ['E001'], operator: 'OR' },
     { fact_id: 'F002', evidence_ids: ['E002'], operator: 'OR' },
   );
   state.chunks.push(
-    { chunk_id: 'ck-b', content: 'Rayaldee 是药品。', source: 'ragflow' },
-    { chunk_id: 'ck-a', content: '成人每日 30 μg 骨化二醇。', source: 'ragflow' },
-    { chunk_id: 'ck-c', content: '与骨化二醇无关的储存条件。', source: 'ragflow' },
+    { chunk_id: 'ck-b', content: 'Alpha01 is a wireless accessory.', source: 'ragflow' },
+    { chunk_id: 'ck-a', content: 'Beta02 supports USB-C Alpha01.', source: 'ragflow' },
+    { chunk_id: 'ck-c', content: 'Maintenance schedule for Gamma09.', source: 'ragflow' },
   );
   state.evidence_chunks.push({ evidence_id: 'E001', chunk_ids: ['ck-b'] });
 
   const before = JSON.stringify(state);
   const candidates = [
-    { chunk_id: 'ck-a', content: '成人每日 30 μg 骨化二醇。', similarity: 0.4 },
-    { chunk_id: 'ck-z', content: 'Rayaldee 是药品。', similarity: 0.8 },
-    { chunk_id: 'ck-b', content: 'Rayaldee 是药品。', similarity: 0.8 },
-    { chunk_id: 'ck-c', content: '与骨化二醇无关的储存条件。', similarity: 0.2 },
+    { chunk_id: 'ck-a', content: 'Beta02 supports USB-C Alpha01.', similarity: 0.4 },
+    { chunk_id: 'ck-z', content: 'Alpha01 is a wireless accessory.', similarity: 0.8 },
+    { chunk_id: 'ck-b', content: 'Alpha01 is a wireless accessory.', similarity: 0.8 },
+    { chunk_id: 'ck-c', content: 'Maintenance schedule for Gamma09.', similarity: 0.2 },
   ];
   const result = autoMatchQuery(state, 'Q0001', candidates, { topK: 2, minSimilarity: 0.5 });
 
   assert.deepEqual(result.fact_ids, ['F001', 'F002']);
-  assert.equal(result.query_text, '这个药是药品还是保健品？');
+  assert.equal(result.query_text, 'What kind of product is Alpha01?');
   assert.deepEqual(result.candidates.map((row) => row.chunk_id), ['ck-b', 'ck-z']);
   assert.deepEqual(result.candidates[0].matched_fact_ids, ['F001', 'F002']);
   assert.deepEqual(result.candidates[0].matched_evidence_ids, ['E001']);
@@ -306,8 +324,8 @@ test('autoMatchQuery ranks deterministically, filters, and does not mutate state
   assert.equal(JSON.stringify(state), before);
 
   const lexical = autoMatchQuery(state, 'Q0001', [
-    { chunk_id: 'ck-a', content: '成人每日 30 μg 骨化二醇。' },
-    { chunk_id: 'ck-c', content: '与骨化二醇无关的储存条件。' },
+    { chunk_id: 'ck-a', content: 'Beta02 supports USB-C Alpha01.' },
+    { chunk_id: 'ck-c', content: 'Maintenance schedule for Gamma09.' },
   ], { minSimilarity: 0.6 });
   assert.deepEqual(lexical.candidates.map((row) => row.chunk_id), ['ck-a']);
   assert.equal(lexical.candidates[0].similarity, 1);
