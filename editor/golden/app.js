@@ -2939,6 +2939,79 @@ function recallTone(value) {
   return 'bad';
 }
 
+function renderRecallFactSelector(facts, selectedFactId) {
+  return `<div class="recall-fact-selector" role="group" aria-label="选择要比较的 Fact">
+    ${facts.map((fact) => `
+      <button class="recall-fact-tab ${fact.fact_id === selectedFactId ? 'active' : ''}" data-action="select-recall-fact" data-id="${attr(fact.fact_id)}" type="button" aria-pressed="${fact.fact_id === selectedFactId}">
+        <span class="mono">${esc(fact.fact_id)}</span>
+        <span>${esc(compactExcerpt(fact.statement, 52))}</span>
+        <span class="recall-fact-tab-outcome ${!fact.scorable ? 'unscorable' : fact.hit ? 'hit' : 'miss'}">${!fact.scorable ? '无 Chunk' : fact.hit ? '命中' : '未命中'}</span>
+      </button>`).join('')}
+  </div>`;
+}
+
+function renderRecallComparison(selectedFact, chunks) {
+  const evidenceRows = selectedFact.evidence || [];
+  const hitChunkIds = new Set(unique(selectedFact.matched_chunk_ids || []));
+  return `<div class="recall-compare">
+    <section class="recall-compare-pane">
+      <div class="recall-compare-head">
+        <div>
+          <strong>预期证据</strong>
+          <span>${esc(selectedFact.fact_id)} · ${esc(selectedFact.statement)}</span>
+        </div>
+        <span class="tiny muted">Evidence ${evidenceRows.length} 条</span>
+      </div>
+      ${evidenceRows.length ? evidenceRows.map((item) => {
+        const chunkIds = unique(item.chunk_ids || []);
+        const evidenceRow = evidence(item.evidence_id);
+        return `<article class="recall-compare-card">
+          <div class="recall-compare-card-head">
+            <strong>${esc(evidenceRow?.title || item.title || item.evidence_id || '未命名 Evidence')}</strong>
+            ${item.evidence_id ? `<span class="mono">${esc(item.evidence_id)}</span>` : ''}
+          </div>
+          ${(evidenceRow?.excerpt || item.excerpt) ? `<p class="recall-evidence-excerpt">${esc(evidenceRow?.excerpt || item.excerpt)}</p>` : ''}
+          <div class="recall-gold-chunks">
+            ${chunkIds.length ? chunkIds.map((chunkId) => {
+              const chunk = localChunk(chunkId);
+              return `<div class="recall-gold-chunk">
+                <div class="recall-compare-card-head">
+                  <strong>${esc(chunk?.document_name || chunk?.document_id || 'Gold Chunk')}</strong>
+                  <span class="mono">${esc(chunkId)}</span>
+                </div>
+                ${chunk ? `<pre class="recall-chunk-text">${esc(chunk.content || '该快照没有原文内容。')}</pre>` : '<div class="recall-empty">无本地快照</div>'}
+              </div>`;
+            }).join('') : '<div class="recall-empty">这条 Evidence 没有关联 Chunk。</div>'}
+          </div>
+        </article>`;
+      }).join('') : '<div class="recall-empty">这条 Fact 没有关联 Evidence。</div>'}
+    </section>
+    <section class="recall-compare-pane">
+      <div class="recall-compare-head">
+        <div>
+          <strong>实际召回</strong>
+          <span>RAGFlow 本轮 Top-K 结果</span>
+        </div>
+        <span class="tiny muted">Top ${esc(chunks.length)}</span>
+      </div>
+      ${chunks.length ? chunks.map((chunk) => {
+        const chunkId = text(chunk.chunk_id);
+        return `<article class="recall-compare-card ${hitChunkIds.has(chunkId) ? 'matched' : ''}">
+          <div class="recall-compare-card-head">
+            <strong>${esc(chunk.document_name || chunk.document_id || '未命名文档')}</strong>
+            <span class="mono">${esc(chunkId)}</span>
+          </div>
+          <div class="recall-result-meta">
+            <span>相似度 ${esc(similarityText(chunk.similarity))}</span>
+            ${hitChunkIds.has(chunkId) ? '<span class="recall-hit-badge">matched · 当前 Fact</span>' : ''}
+          </div>
+          <pre class="recall-chunk-text">${esc(chunk.content || 'RAGFlow 没有返回原文内容。')}</pre>
+        </article>`;
+      }).join('') : '<div class="recall-empty">RAGFlow 没有返回 Chunk。</div>'}
+    </section>
+  </div>`;
+}
+
 function renderRecallModal(modalState) {
   const title = `召回试跑 · ${modalState.queryId}`;
   if (modalState.loading) {
@@ -2965,6 +3038,9 @@ function renderRecallModal(modalState) {
   const report = modalState.report;
   const retrieval = modalState.retrieval;
   const groups = Array.isArray(report.groups) ? report.groups : [];
+  const facts = Array.isArray(report.facts) ? report.facts : [];
+  const selectedFact = facts.find((fact) => fact.fact_id === modalState.selectedFactId) || facts[0] || null;
+  const chunks = Array.isArray(retrieval?.chunks) ? retrieval.chunks.slice(0, report.top_k) : [];
   return modalShell({
     title,
     subtitle: `Top ${report.top_k} · ${retrieval?.latency_ms || report.latency_ms || '—'} ms · Query 文本直接送给 RAGFlow`,
@@ -2989,31 +3065,7 @@ function renderRecallModal(modalState) {
           return `<div class="recall-group-note ${isRequiredAll ? 'required-group' : 'alternative-group'}"><strong>${esc(label)}</strong><span>${esc(semantics)} ${group.fact_ids.map(esc).join('、')}。${esc(progress)}</span></div>`;
         }).join('')}
       </div>` : ''}
-      <div class="recall-facts">
-        ${report.facts.length ? report.facts.map((item) => `
-          <div class="recall-fact ${!item.scorable ? 'unscorable' : item.hit ? 'hit' : 'miss'}">
-            <span class="recall-status">${icon(!item.scorable ? 'info' : item.hit ? 'check' : 'alert')}</span>
-            <div class="recall-fact-main">
-              <strong>${esc(item.fact_id)} · ${esc(item.statement)}</strong>
-              <p>${item.scorable ? `${item.requirement === 'required_any' ? `任选组 ${item.group_id} 成员` : item.group_id ? `必需组 ${item.group_id} 成员，单独计分` : '必需单项'} · ${item.operator} · Evidence ${item.evidence_ids.length} 条 · 命中 Chunk ${item.matched_chunk_ids.length} / ${item.chunk_ids.length}` : '没有绑定可检索 Chunk，无法计分。'}</p>
-            </div>
-            <div class="recall-fact-states">
-              <span class="recall-state-row"><small>试跑</small><span class="recall-outcome ${!item.scorable ? 'unscorable' : item.hit ? 'hit' : 'miss'}">${!item.scorable ? '无 Chunk' : item.hit ? '命中' : '未命中'}</span></span>
-              <span class="recall-state-row"><small>审核</small>${statusChip(item.status)}</span>
-            </div>
-          </div>`).join('') : '<div class="recall-empty">这条 Query 没有必需 Fact 或任选组，因此 Recall 为 null。</div>'}
-      </div>
-      <div class="retrieval-list">
-        <div class="row wrap">
-          <strong>RAGFlow Top-K</strong>
-          <span class="tiny muted">${retrieval?.chunks?.length || 0} 个 Chunk</span>
-        </div>
-        ${(retrieval?.chunks || []).slice(0, report.top_k).map((chunk) => `
-          <div class="retrieval-row">
-            <span class="name">${esc(chunk.document_name || chunk.document_id || '未命名文档')} · ${esc(chunk.chunk_id)}</span>
-            <span>${esc(similarityText(chunk.similarity))}</span>
-          </div>`).join('') || '<div class="recall-empty">RAGFlow 没有返回 Chunk。</div>'}
-      </div>`,
+      ${facts.length ? `${renderRecallFactSelector(facts, selectedFact.fact_id)}${renderRecallComparison(selectedFact, chunks)}` : '<div class="recall-empty">这条 Query 没有必需 Fact 或任选组，因此 Recall 为 null。</div>'}`,
     footer: `
       <button class="btn btn-ghost" data-action="close-modal" type="button">关闭</button>
       <button class="btn btn-primary" data-action="run-recall" data-id="${attr(modalState.queryId)}" type="button">${icon('refresh')} 再跑一次</button>`,
@@ -4449,6 +4501,12 @@ async function dispatchClickAction(action, element) {
     await approveQuery(element.dataset.id || ui.queryId, element.dataset.advance === 'true');
   } else if (action === 'run-recall') {
     await runRecall(element.dataset.id || ui.queryId);
+  } else if (action === 'select-recall-fact' && ui.modal?.type === 'recall') {
+    const factId = element.dataset.id || '';
+    if ((ui.modal.report?.facts || []).some((fact) => fact.fact_id === factId)) {
+      ui.modal.selectedFactId = factId;
+      renderModal();
+    }
   } else if (action === 'open-query') {
     moveToQuery(element.dataset.id || '');
   } else if (action === 'open-query-facts') {
