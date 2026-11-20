@@ -1522,7 +1522,7 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
   const metrics = summarizeAiQaRecords(records);
   const finalSummary = metrics.final_grounding;
   if (finalSummary.cases_scored > 0 && finalSummary.gold_facts_hit === 0) {
-    warnings.push('本轮所有可评分题均未命中 Gold；请先核对 Gold chunk 映射是否针对当前 qwen 数据库。');
+    warnings.push('本轮所有可评分题均未命中 Gold；请先核对 Gold chunk 映射是否匹配当前检索语料。');
   }
 
   const decisionRows = records.map((row) => ({
@@ -1533,7 +1533,6 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
   const recallMetrics = scoreRecallMetrics(records);
   const attribution = aggregateDecisionAttribution(records);
   const observedDecisions = records.filter((row) => row.decision?.action).length;
-  const expectedDecisions = records.filter((row) => row.scoreable).length;
   const observedTraces = records.filter((row) => row.decision_trace?.status === 'observed').length;
   const metadataStatus = runMeta.metadata_status === 'unavailable' && observedTraces < cases.length
     ? 'unavailable'
@@ -1550,9 +1549,6 @@ async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => 
   }
   if (observedTraces < cases.length) {
     warnings.push(`${cases.length - observedTraces} 题缺少 Decision trace，无法逐题确认模型/source/mode 归因。`);
-  }
-  if (expectedDecisions !== 158) {
-    warnings.push(`可评分 Decision 题为 ${expectedDecisions}，预期为 158；请检查 expected-action 映射。`);
   }
   const report = {
     report_schema_version: REPORT_SCHEMA_VERSION,

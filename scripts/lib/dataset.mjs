@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 export const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
+export const DATASET_ROOT = path.resolve(process.env.DATASET_ROOT || path.join(REPO_ROOT, 'datasets'));
 
 export function readJsonl(filePath) {
   return fs.readFileSync(filePath, 'utf8')
@@ -23,7 +24,7 @@ export function writeJsonl(filePath, rows) {
 }
 
 export function datasetDir(version) {
-  return path.join(REPO_ROOT, 'datasets', version);
+  return path.join(DATASET_ROOT, version);
 }
 
 export function loadDataset(version) {
@@ -75,9 +76,6 @@ export function validateExpectedActionMap(data, actionMap) {
   const outputs = new Map(data.expected_outputs.map((row) => [row.case_id, row]));
   const caseIds = new Set(data.cases.map((row) => row.case_id));
   const unscored = new Set(actionMap.unscored_case_ids || []);
-  let answerCount = 0;
-  let scoreableCount = 0;
-
   for (const caseId of caseIds) {
     const entry = actionMap.cases?.[caseId];
     if (!entry) {
@@ -96,11 +94,9 @@ export function validateExpectedActionMap(data, actionMap) {
       }
       continue;
     }
-    scoreableCount += 1;
     if (!entry.scoreable || entry.expected_action !== directAction) {
       errors.push(`expected_actions: ${caseId} expected ${directAction}, got ${entry.expected_action} (scoreable=${entry.scoreable})`);
     }
-    if (behavior === 'answer') answerCount += 1;
   }
 
   for (const caseId of Object.keys(actionMap.cases || {})) {
@@ -109,9 +105,6 @@ export function validateExpectedActionMap(data, actionMap) {
   for (const caseId of unscored) {
     if (!caseIds.has(caseId)) errors.push(`expected_actions: unknown unscored case ${caseId}`);
   }
-  if (caseIds.size !== 163) errors.push(`expected_actions: expected 163 cases, got ${caseIds.size}`);
-  if (answerCount !== 149) errors.push(`expected_actions: expected 149 answer cases, got ${answerCount}`);
-  if (scoreableCount !== 158) errors.push(`expected_actions: expected 158 scoreable cases, got ${scoreableCount}`);
   return errors;
 }
 

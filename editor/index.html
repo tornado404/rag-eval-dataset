@@ -56,15 +56,15 @@ button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button
       <small id="eval-target-note">直接调用 RAGFlow 检索接口，返回纯 RAGFlow Top-12；数据集 ID 取自当前版本映射。</small>
     </label>
     <label class="eval-field">模型 API 预设
-      <select id="rewrite-preset"><option value="">自定义</option><option value="m3-qwen" selected>M3 · Qwen3.6-35B-A3B-4bit</option></select>
-      <small>M3 管理页：http://192.168.31.201:8000/admin/dashboard；此预设调用 /v1/chat/completions，API Key 单独填写。</small>
+      <select id="rewrite-preset"><option value="">自定义</option><option value="openai-compatible">OpenAI 兼容示例</option></select>
+      <small>示例会填入通用占位地址和模型名；使用前请换成自己的服务配置。</small>
     </label>
     <label class="eval-field">Query 改写模型 API 地址
-      <input id="rewrite-endpoint" type="url" value="http://192.168.31.201:8000/v1/chat/completions" placeholder="https://模型服务/v1/chat/completions" autocomplete="url">
+      <input id="rewrite-endpoint" type="url" placeholder="https://模型服务/v1/chat/completions" autocomplete="url">
       <small>OpenAI 兼容 Chat Completions 完整地址；本工具单独触发改写，建议使用与 M3 相同的模型配置。只测漂移时无需检索服务凭据。</small>
     </label>
     <label class="eval-field">模型名称
-      <input id="rewrite-model" value="Qwen3.6-35B-A3B-4bit" placeholder="例如：当前服务使用的模型名" autocomplete="off">
+      <input id="rewrite-model" placeholder="例如：当前服务使用的模型名" autocomplete="off">
     </label>
     <label class="eval-field">模型 API Key（Bearer）
       <input id="rewrite-api-key" type="password" autocomplete="new-password" placeholder="留空使用服务端已配置 Key">
@@ -80,7 +80,7 @@ button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button
     </div>
     <div class="eval-target-config" data-target="ai-qa" hidden>
       <label class="eval-field">M3 API 根地址
-        <input id="aiqa-base-url" type="url" placeholder="https://api.nicoyabio.com" autocomplete="url">
+        <input id="aiqa-base-url" type="url" placeholder="https://api.example.com" autocomplete="url">
       </label>
       <label class="eval-field">后端容器名（可选）
         <input id="aiqa-container" placeholder="留空自动探测" autocomplete="off">
@@ -95,8 +95,6 @@ button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button
       <label class="eval-field eval-ragflow-address">RAGFlow API 根地址
         <select id="ragflow-base-preset" aria-label="选择 RAGFlow API 地址预设">
           <option value="">自定义地址</option>
-          <option value="http://192.168.31.201:8088/">本地 · 192.168.31.201:8088</option>
-          <option value="https://ragflow.dozoyen.com/">公网 · ragflow.dozoyen.com</option>
         </select>
         <input id="ragflow-base-url" type="url" placeholder="选择预设，或输入自定义地址" autocomplete="url">
         <small>选择预设会填入输入框，地址仍可编辑。</small>
@@ -165,11 +163,8 @@ let original=new Map(),dirty=new Set(),debounce=null,activeEvalController=null,l
 const q=id=>document.getElementById(id), body=q('body'), msg=q('msg');
 const factText=new Map();
 const EVAL_PROFILE_STORAGE_KEY='rag-eval-editor-profiles:v1';
-const MODEL_PRESET={id:'m3-qwen',endpoint:'http://192.168.31.201:8000/v1/chat/completions',model:'Qwen3.6-35B-A3B-4bit'};
-const RAGFLOW_BASE_PRESETS=[
-  {url:'http://192.168.31.201:8088/',label:'本地 RAGFlow'},
-  {url:'https://ragflow.dozoyen.com/',label:'公网 RAGFlow'},
-];
+const MODEL_PRESET={id:'openai-compatible',endpoint:'https://llm.example.com/v1/chat/completions',model:'your-model'};
+const RAGFLOW_BASE_PRESETS=[];
 let evalProfiles=[],activeEvalProfileId='',evalProfileSnapshot=null,evalProfileStorageReady=true,serverEvalDefaults=null;
 function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 function idsText(v){return Array.isArray(v)?v.join(', '):''}
@@ -486,7 +481,7 @@ function decisionSection(report){
   <h4>误拒 / 误答</h4>${issueTable}</section>`;
 }
 function recallSection(report){
-  const recall=report.summary||{},final=recall.final_grounding||{},raw=recall.ragflow_candidates_at_12||{},coverage=recall.corpus_coverage||{};
+  const recall=report.summary||{},final=recall.final_grounding||{},raw=recall.ragflow_candidates_at_12||{};
   return `<section class="eval-metric-card"><h3>Recall 状态与覆盖</h3><dl>
     <dt>队列分母</dt><dd>${recall.cohort_cases??0} 题</dd>
     <dt>尝试检索</dt><dd>${recall.retrieval_attempted?.cases??0}/${recall.retrieval_attempted?.denominator??0} · ${rate(recall.retrieval_attempted?.rate)}</dd>
@@ -498,10 +493,6 @@ function recallSection(report){
     <dt>最终证据 Gold Recall</dt><dd>${rate(final.recall_at_k)} · K ${final.k_min??'—'}-${final.k_max??'—'}</dd>
     <dt>原始候选 Gold Recall</dt><dd>${rate(raw.recall_at_k)} · ${raw.gold_facts_hit??0}/${raw.gold_facts_scored??0}</dd>
     <dt>所需 Gold facts</dt><dd>${recall.gold_facts_required??0}</dd>
-    <dt>Gold 语料库</dt><dd>${coverage.gold_datasets?.covered??0}/${coverage.gold_datasets?.total_online??0} · ${esc((coverage.gold_datasets?.ids||[]).join(', ')||'—')}</dd>
-    <dt>Evidence 行映射</dt><dd>${coverage.evidence_rows?.mapped??0}/${coverage.evidence_rows?.total??0} · ${rate(coverage.evidence_rows?.rate)}</dd>
-    <dt>Required facts 可评分</dt><dd>${coverage.required_facts?.scorable??0}/${coverage.required_facts?.total??0} · ${rate(coverage.required_facts?.rate)}</dd>
-    <dt>未映射 Evidence</dt><dd>${esc((coverage.unmapped_evidence_ids||[]).join(', ')||'—')}</dd>
   </dl></section>`;
 }
 function metadataSection(report){
@@ -671,7 +662,7 @@ function renderComparison(){
       return `<tr><td>${esc(row.case_id)}</td><td>${esc(baseRow.observed_action||'—')}</td><td>${esc(row.observed_action||'—')}</td></tr>`;
     }).filter(Boolean);
     const recallChanges=(compared.recall_changes||[]).map(change=>`<tr><td>${esc(change.case_id)}</td><td>${esc(change.base.retrieval_state||'—')} / ${change.base.final_hit_fact_count??'—'} / ${change.base.raw_hit_fact_count??'—'}</td><td>${esc(change.other.retrieval_state||'—')} / ${change.other.final_hit_fact_count??'—'} / ${change.other.raw_hit_fact_count??'—'}</td><td>${change.final_hit_delta??'—'} / ${change.raw_hit_delta??'—'}</td></tr>`).join('');
-    host.innerHTML=`<strong>兼容运行对比</strong><dl>${metric('Decision 准确率 delta',compared.deltas.decision_accuracy)}${metric('Decision Macro F1 delta',compared.deltas.decision_macro_f1)}${metric('最终证据 Gold Recall delta',compared.deltas.final_recall_at_k)}${metric('原始候选 Gold Recall delta',compared.deltas.candidate_recall_at_k)}${metric('Gold facts 命中数 delta',compared.deltas.final_gold_facts_hit,'count')}${metric('可评分题数 delta',compared.deltas.final_cases_scored,'count')}<dt>Evidence 映射变化</dt><dd>${compared.deltas.mapped_evidence_rows??'—'} 行</dd></dl>
+    host.innerHTML=`<strong>兼容运行对比</strong><dl>${metric('Decision 准确率 delta',compared.deltas.decision_accuracy)}${metric('Decision Macro F1 delta',compared.deltas.decision_macro_f1)}${metric('最终证据 Gold Recall delta',compared.deltas.final_recall_at_k)}${metric('原始候选 Gold Recall delta',compared.deltas.candidate_recall_at_k)}${metric('Gold facts 命中数 delta',compared.deltas.final_gold_facts_hit,'count')}${metric('可评分题数 delta',compared.deltas.final_cases_scored,'count')}</dl>
       ${compared.confounders.length?`<p class="eval-muted">无法归因的差异（不阻断 delta）：${esc(compared.confounders.join(', '))}</p>`:'<p class="eval-muted">未检测到常见混淆因素。</p>'}
       <details><summary>逐题动作变化（${actionChanges.length}）</summary><div class="eval-table-scroll"><table><thead><tr><th>Case</th><th>基线动作</th><th>对比动作</th></tr></thead><tbody>${actionChanges.join('')||'<tr><td colspan="3">无变化</td></tr>'}</tbody></table></div></details>
       <details><summary>逐题 Recall 变化（${recallChanges?compared.recall_changes.length:0}）</summary><div class="eval-table-scroll"><table><thead><tr><th>Case</th><th>基线：状态 / 最终命中 / 候选命中</th><th>对比：状态 / 最终命中 / 候选命中</th><th>命中变化：最终 / 候选</th></tr></thead><tbody>${recallChanges||'<tr><td colspan="4">无变化</td></tr>'}</tbody></table></div></details>`;

@@ -2146,7 +2146,7 @@ function renderFactEditor() {
         <div class="form-grid">
           <label class="field">
             <span class="field-label">主题</span>
-            <input class="input" id="fact-topic" data-bind="fact-topic" value="${attr(draft.topic)}" placeholder="例如：产品适用人群或禁忌条件" maxlength="120" list="fact-topic-options">
+            <input class="input" id="fact-topic" data-bind="fact-topic" value="${attr(draft.topic)}" placeholder="例如：功能范围或适用条件" maxlength="120" list="fact-topic-options">
             <datalist id="fact-topic-options">
               ${topicOptions().map((topic) => `<option value="${attr(topic.name)}" label="${attr(topic.id)}"></option>`).join('')}
             </datalist>

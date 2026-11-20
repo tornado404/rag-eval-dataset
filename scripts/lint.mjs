@@ -99,7 +99,12 @@ const RULES = [
           errors.push(diag(this.id, 'MANIFEST.json', 1, `listed dataset directory does not exist: datasets/${version}`));
         }
       }
-      if (!listed.includes(context.rootManifest.current_version)) errors.push(diag(this.id, 'MANIFEST.json', 1, `current_version ${context.rootManifest.current_version} is not listed in versions`));
+      if (listed.length && !listed.includes(context.rootManifest.current_version)) {
+        errors.push(diag(this.id, 'MANIFEST.json', 1, `current_version ${context.rootManifest.current_version} is not listed in versions`));
+      }
+      if (!listed.length && context.rootManifest.current_version !== null) {
+        errors.push(diag(this.id, 'MANIFEST.json', 1, 'current_version must be null when no public dataset versions are listed'));
+      }
       return errors;
     },
   },

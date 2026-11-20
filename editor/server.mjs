@@ -65,10 +65,10 @@ function buildEvalDefaults() {
   const configuredTarget = evalEnv('EVAL_TARGET');
   return {
     target: ['qa-probe', 'ai-qa'].includes(configuredTarget) ? configuredTarget : 'ragflow',
-    rewriteEndpoint: evalEnv('EVAL_REWRITE_ENDPOINT') || 'http://192.168.31.201:8000/v1/chat/completions',
-    rewriteModel: evalEnv('EVAL_REWRITE_MODEL') || 'Qwen3.6-35B-A3B-4bit',
-    ragflowBaseUrl: evalEnv('RAGFLOW_BASE_URL') || 'http://192.168.31.201:8088',
-    qaBaseUrl: evalEnv('M3_BASE_URL') || 'https://api.nicoyabio.com',
+    rewriteEndpoint: evalEnv('EVAL_REWRITE_ENDPOINT'),
+    rewriteModel: evalEnv('EVAL_REWRITE_MODEL'),
+    ragflowBaseUrl: evalEnv('RAGFLOW_BASE_URL'),
+    qaBaseUrl: evalEnv('M3_BASE_URL'),
     qaBackendContainer: evalEnv('M3_BACKEND_CONTAINER'),
     datasetIds: splitList(evalEnv('RAGFLOW_DATASET_IDS')),
     maxCases: Number.isInteger(maxCases) && maxCases >= 0 && maxCases <= 1000 ? maxCases : 0,
@@ -147,6 +147,10 @@ function git(args) {
 }
 
 function commitAndMaybePush(rows) {
+  const repositoryPath = path.relative(fs.realpathSync(REPO_ROOT), fs.realpathSync(outputsPath));
+  if (repositoryPath === '..' || repositoryPath.startsWith(`..${path.sep}`) || path.isAbsolute(repositoryPath)) {
+    return { committed: false, external_data: true };
+  }
   const changed = git(['status', '--porcelain', '--', path.relative(REPO_ROOT, outputsPath)]);
   if (!changed) return { committed: false };
   if (!AUTO_COMMIT) return { committed: false, dirty: true };

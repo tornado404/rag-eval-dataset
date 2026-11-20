@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, readJsonl } from './lib/dataset.mjs';
+import { datasetDir, readJsonl } from './lib/dataset.mjs';
 
 function usage() {
   console.error('Usage: node scripts/compute_hit.mjs <details_mode_a.jsonl> [--top-k 12] [--out file.json]');
@@ -19,7 +19,7 @@ const datasetVersion = datasetArg >= 0 ? process.argv[datasetArg + 1] : process.
 
 let expectedBehaviors = null;
 if (datasetVersion) {
-  const casesPath = path.join(REPO_ROOT, 'datasets', datasetVersion, 'cases.jsonl');
+  const casesPath = path.join(datasetDir(datasetVersion), 'cases.jsonl');
   expectedBehaviors = new Map(readJsonl(casesPath).map((row) => [row.case_id, row.expected_behavior]));
 }
 

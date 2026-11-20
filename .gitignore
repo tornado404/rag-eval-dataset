@@ -4,3 +4,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+/.audit/
+/.migrate-v15/
+/reports/
+/datasets/v*/
+/datasets/golden-v*/

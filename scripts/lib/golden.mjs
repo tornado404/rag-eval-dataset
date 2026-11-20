@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, readJsonl } from './dataset.mjs';
+import { DATASET_ROOT, readJsonl } from './dataset.mjs';
 
 export const GOLDEN_VERSION = 'golden-v1';
 export const FILE_ORDER = ['queries', 'facts', 'evidences', 'chunks', 'query_facts', 'fact_evidence', 'evidence_chunks'];
@@ -9,57 +9,7 @@ export const VARIANT_TYPES = ['canonical', 'paraphrase', 'colloquial', 'follow_u
 export const BEHAVIORS = ['answer', 'refuse', 'clarify'];
 export const REQUIREMENTS = ['required', 'required_any', 'optional', 'forbidden'];
 export const LEGACY_ALTERNATIVE_GROUP_ID = 'A1';
-export const FACT_TYPES = [
-  'product_information',
-  'population',
-  'usage',
-  'safety',
-  'special_population',
-  'ingredients',
-  'usage_safety',
-  'plain_language',
-  'customer_service',
-  'research_evidence',
-  'cross_source',
-];
-export const FACT_TYPE_LABELS = {
-  product_information: '产品信息',
-  population: '适用性判断',
-  usage: '用法用量',
-  safety: '安全警示',
-  special_population: '特殊人群',
-  ingredients: '成分规格',
-  usage_safety: '漏用误用',
-  plain_language: '术语解释',
-  customer_service: '客服口径',
-  research_evidence: '科研证据',
-  cross_source: '跨源核对',
-};
-export const TOPICS = [
-  { id: 'S001', name: '手中产品信息核对' },
-  { id: 'S002', name: '个人适用性确认' },
-  { id: 'S003', name: '日常用法与用量' },
-  { id: 'S004', name: '使用前限制与警示' },
-  { id: 'S005', name: '特殊人群使用条件' },
-  { id: 'S006', name: '成分与规格查询' },
-  { id: 'S007', name: '漏用或误用后的处理' },
-  { id: 'S008', name: '使用后不适的求助指引' },
-  { id: 'S009', name: '与其他药物或补充剂同用' },
-  { id: 'S010', name: '说明书术语通俗解释' },
-  { id: 'S011', name: '查找匹配的客服答复' },
-  { id: 'S012', name: '补充信息以澄清咨询' },
-  { id: 'S013', name: '无匹配话术时转交核实' },
-  { id: 'S014', name: '研究对象与适用条件' },
-  { id: 'S015', name: '研究方法与干预安排' },
-  { id: 'S016', name: '研究指标与报告结果' },
-  { id: 'S017', name: '研究结果能否外推到个人' },
-  { id: 'S018', name: '研究结论的局限与不确定性' },
-  { id: 'S019', name: '不同研究结果的差异' },
-  { id: 'S020', name: '产品资料与科研证据核对' },
-  { id: 'S024', name: '长期用药与依从性' },
-  { id: 'S025', name: '产品真伪与批号核验' },
-  { id: 'S026', name: '价格、优惠与购买渠道' },
-];
+export const DEFAULT_FACT_TYPE = 'general';
 export const IMPORTANCE = ['P0', 'P1', 'P2'];
 export const OPERATORS = ['OR', 'AND'];
 
@@ -114,7 +64,7 @@ function normalizedGroupId(requirement, value) {
 
 export function goldenDir(version = GOLDEN_VERSION) {
   const override = text(process.env.GOLDEN_DATA_DIR);
-  return override || path.join(REPO_ROOT, 'datasets', version);
+  return override || path.join(DATASET_ROOT, version);
 }
 
 function filePath(version, name) {
@@ -194,7 +144,7 @@ function normalizeFact(row, input) {
   row.statement = text(row.statement);
   row.topic = text(row.topic);
   row.source_note = text(row.source_note);
-  row.fact_type = oneOf(input.fact_type ?? row.fact_type, FACT_TYPES, FACT_TYPES[0]);
+  row.fact_type = text(input.fact_type ?? row.fact_type) || DEFAULT_FACT_TYPE;
   row.importance = oneOf(input.importance ?? row.importance, IMPORTANCE, 'P1');
   row.status = oneOf(input.status ?? row.status, STATUSES, 'draft');
 }
@@ -570,7 +520,7 @@ export function validateState(state) {
 
   for (const row of state.facts) {
     if (!text(row.statement)) errors.push(`facts:${row.fact_id}: empty statement`);
-    if (!FACT_TYPES.includes(row.fact_type)) errors.push(`facts:${row.fact_id}: invalid fact_type`);
+    if (!/^[a-z][a-z0-9_]*$/.test(text(row.fact_type))) errors.push(`facts:${row.fact_id}: invalid fact_type`);
     if (!IMPORTANCE.includes(row.importance)) errors.push(`facts:${row.fact_id}: invalid importance`);
     if (!STATUSES.includes(row.status)) errors.push(`facts:${row.fact_id}: invalid status`);
   }

@@ -1,46 +1,12 @@
 {
   "schema_version": 1,
-  "name": "RAGFlow evaluation dataset",
-  "purpose": "Editable, git-tracked QA dataset for repeated Recall@12 and HIT evaluation.",
-  "source": {
-    "repository": "ai-support-platform",
-    "path": "docs/eval/knowledge-map/v1.4",
-    "tag": "golden-dataset-v1.4.0"
-  },
-  "current_version": "v1.5",
-  "versions": [
-    {
-      "id": "v1.4",
-      "status": "frozen-import",
-      "case_count": 163,
-      "files": [
-        "datasets/v1.4/cases.jsonl",
-        "datasets/v1.4/facts.jsonl",
-        "datasets/v1.4/evidences.jsonl",
-        "datasets/v1.4/fact_evidence_relations.jsonl",
-        "datasets/v1.4/expected_outputs.jsonl"
-      ]
-    },
-    {
-      "id": "v1.5",
-      "status": "evaluation-mapped",
-      "case_count": 163,
-      "derived_from": "v1.4",
-      "note": "v1.4 题目与事实不变；证据 chunk ID 重新映射到 M3 qwen 解析库，3 条 DS01 证据因上游内容改写未映射，按不可评分处理。",
-      "files": [
-        "datasets/v1.5/cases.jsonl",
-        "datasets/v1.5/facts.jsonl",
-        "datasets/v1.5/evidences.jsonl",
-        "datasets/v1.5/fact_evidence_relations.jsonl",
-        "datasets/v1.5/expected_outputs.jsonl",
-        "datasets/v1.5/datasets.jsonl",
-        "datasets/v1.5/mapping_report.json"
-      ]
-    }
-  ],
+  "name": "RAG evaluation tooling",
+  "purpose": "Source code only. Evaluation datasets are provisioned separately and are not included in this repository.",
+  "current_version": null,
+  "versions": [],
   "metrics": {
-    "recall_at_k": "covered required facts / total required facts, macro averaged over answer cases",
-    "any_hit_at_k": "fraction of answer cases with at least one required fact covered",
-    "strict_hit_at_k": "fraction of answer cases with all required facts covered"
+    "recall_at_k": "covered required facts / total required facts, macro averaged over eligible cases",
+    "any_hit_at_k": "fraction of eligible cases with at least one required fact covered",
+    "strict_hit_at_k": "fraction of eligible cases with all required facts covered"
   }
 }

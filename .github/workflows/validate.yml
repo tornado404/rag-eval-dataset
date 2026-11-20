@@ -6,17 +6,11 @@ on:
 
 jobs:
   validate:
-    runs-on: [self-hosted, macOS, ARM64, office]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Lint, test, and validate
-        shell: bash
-        run: |
-          NODE_BIN="/Users/zoyen/actions-runner-3/externals.2.338.2/node24/bin/node"
-          if [[ -x "$NODE_BIN" ]]; then
-            "$NODE_BIN" scripts/lint.mjs
-            "$NODE_BIN" scripts/validate.mjs
-            "$NODE_BIN" --test "test/**/*.test.mjs"
-          else
-            npm run check
-          fi
+        run: npm run check
