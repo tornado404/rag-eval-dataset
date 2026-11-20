@@ -107,6 +107,8 @@ Evidence 与 Chunk 是多对多：一条证据可以由多个 Chunk 共同支撑
 
 勾选 Chunk 表示选择 Evidence 的来源。点 `创建 Evidence 草稿` 后，页面打开编辑窗口，并保留候选结果。窗口逐条展示所选 Chunk 的完整原文和来源信息。审核员可以移除来源、插入某条原文到摘录，再编辑标题和 Evidence 摘录。每条 Evidence 记录一项可核验事实；不同事实分别建条目，只有共同支撑当前 Fact 的 Chunk 才放进同一条 Evidence。页面不会自动拼接多个 Chunk 的内容，也不会在草稿阶段写入数据。草稿暂存在浏览器内存中，必须有目标 Fact、标题、摘录和至少一个来源 Chunk。
 
+Chunk 卡片上的 `禁用` / `启用` 会调用 RAGFlow `PATCH /api/v1/datasets/{dataset_id}/documents/{document_id}/chunks`，发送 `available_int: 0` 或 `1`；禁用后的 Chunk 在重新启用前不再参与 RAGFlow 检索。该操作只修改 RAGFlow 的检索可用性，不写入本地 gold 文件或 Chunk 快照。
+
 点 `保存 Evidence` 后，页面向 `POST /api/golden/evidence` 发送一个 Evidence 草稿、目标 `fact_id` 和所选 Chunk 快照。服务端在一次 `read → mutate → validate → write changed files` 操作中完成以下写入：
 
 1. 按 `chunk_id` 新增或更新 `chunks.jsonl` 中的 Chunk 快照。
@@ -142,6 +144,7 @@ Fact 的审核状态可在 Fact 库编辑，也可在“管理 Query 的 Facts�
 | POST | `/api/golden/queries/bulk` | 批量创建主问、变体及其 Fact 关联 |
 | POST | `/api/golden/ragflow/search` | RAGFlow `/api/v1/retrieval` |
 | GET | `/api/golden/ragflow/documents/:id/chunks` | RAGFlow 文档 Chunk 列表 |
+| POST | `/api/golden/ragflow/chunks/availability` | 调用 RAGFlow PATCH 禁用/启用 Chunk，不写本地数据 |
 | POST | `/api/golden/evidence/auto-match` | 按 Query/Fact 检索并排序候选 Chunk，不写数据 |
 | POST | `/api/golden/recall` | 试检索并计算 gold chunk 覆盖 |
 

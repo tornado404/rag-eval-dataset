@@ -37,6 +37,19 @@ test('upsert creates ids, updates, and rejects duplicate query text', () => {
   assert.equal(state.queries[1].status, 'review');
   assert.equal(state.queries[1].text, '请告诉我 Rayaldee 是不是药物？');
 
+  assert.deepEqual(
+    upsertEntity(state, 'chunks', {
+      chunk_id: 'ck-a',
+      content: 'Rayaldee 是药品。',
+      source: 'ragflow',
+      dataset_id: 'ds-1',
+      document_id: 'doc-1',
+      available: false,
+      available_int: 0,
+    }).row.available,
+    false,
+  );
+
   const state2 = fixture();
   upsertEntity(state2, 'queries', { text: '请告诉我 Rayaldee 是不是药物？' });
   upsertEntity(state2, 'queries', { text: '请告诉我 Rayaldee 是不是药物？' });

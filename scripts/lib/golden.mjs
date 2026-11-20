@@ -74,7 +74,7 @@ const FIELDS = {
   queries: ['text', 'variant_type', 'parent_query_id', 'expected_behavior', 'status', 'notes'],
   facts: ['statement', 'topic', 'fact_type', 'importance', 'source_note', 'status'],
   evidences: ['title', 'excerpt', 'status'],
-  chunks: ['dataset_id', 'document_id', 'document_name', 'page', 'content', 'source'],
+  chunks: ['dataset_id', 'document_id', 'document_name', 'page', 'content', 'source', 'available', 'available_int'],
 };
 
 export class GoldenError extends Error {
@@ -93,6 +93,13 @@ function text(value) {
 function oneOf(value, allowed, fallback) {
   const normalized = text(value);
   return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function booleanOption(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  return value === undefined || value === null || value === '' ? null : false;
 }
 
 function unique(values) {
@@ -208,6 +215,11 @@ function normalizeChunk(row, input) {
   row.page = text(row.page);
   row.content = String(row.content ?? '');
   row.source = oneOf(row.source, ['ragflow', 'manual'], 'manual');
+  const available = booleanOption(row.available)
+    ?? booleanOption(row.available_int)
+    ?? true;
+  row.available = available;
+  row.available_int = available ? 1 : 0;
 }
 
 const NORMALIZERS = {

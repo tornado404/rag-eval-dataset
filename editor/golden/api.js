@@ -116,6 +116,10 @@ export function getDocumentChunks(documentId, { datasetId = '', page = 1, pageSi
   return request(`/api/golden/ragflow/documents/${encodeURIComponent(documentId)}/chunks?${query}`);
 }
 
+export function setRagflowChunkAvailability(body) {
+  return post('/api/golden/ragflow/chunks/availability', body);
+}
+
 export function runRecall(body) {
   return post('/api/golden/recall', body);
 }

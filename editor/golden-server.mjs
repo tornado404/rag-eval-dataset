@@ -220,6 +220,22 @@ function pageOf(chunk) {
   return '';
 }
 
+function booleanOption(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  return value === undefined || value === null || value === '' ? null : false;
+}
+
+function chunkAvailability(chunk, fallback = {}) {
+  const available = booleanOption(chunk?.available)
+    ?? booleanOption(chunk?.available_int)
+    ?? booleanOption(fallback.available)
+    ?? booleanOption(fallback.available_int)
+    ?? true;
+  return { available, available_int: available ? 1 : 0 };
+}
+
 function normalizeChunk(chunk, fallback = {}) {
   const documentId = firstString(chunk, ['document_id', 'doc_id']) || fallback.document_id || '';
   const documentName = firstString(chunk, ['docnm_kwd', 'document_name', 'doc_name']) || fallback.document_name || '';
@@ -232,6 +248,7 @@ function normalizeChunk(chunk, fallback = {}) {
     document_name: documentName,
     page: pageOf(chunk) || fallback.page || '',
     source: 'ragflow',
+    ...chunkAvailability(chunk, fallback),
   };
 }
 
@@ -297,6 +314,36 @@ async function ragflowDocumentChunks(config, { datasetId, documentId, page = 1, 
     total: Number(payload?.data?.total || chunks.length),
     page: Number(page),
     page_size: Number(pageSize),
+  };
+}
+
+async function ragflowSetChunkAvailability(config, { datasetId, documentId, chunkIds, available }) {
+  const dataset = stringOf(datasetId);
+  const document = stringOf(documentId);
+  if (!dataset || !document) throw new GoldenError('缺少 dataset_id 或 document_id', 400);
+  if (typeof available !== 'boolean') throw new GoldenError('available 必须是布尔值', 400);
+  if (!Array.isArray(chunkIds) || !chunkIds.length || chunkIds.some((id) => !stringOf(id))) {
+    throw new GoldenError('chunk_ids 必须是非空字符串数组', 400);
+  }
+  requireRagflow(config);
+  const ids = chunkIds.map((id) => stringOf(id));
+  const payload = await requestJson(
+    ragflowUrl(config, `/datasets/${encodeURIComponent(dataset)}/documents/${encodeURIComponent(document)}/chunks`),
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${config.ragflowApiKey}` },
+      body: { chunk_ids: ids, available_int: available ? 1 : 0 },
+      label: 'RAGFlow Chunk 可用性',
+    },
+  );
+  if (Number(payload?.code) !== 0) {
+    throw new GoldenError(`RAGFlow 更新 Chunk 可用性失败：${payload?.message || payload?.code}`, 502);
+  }
+  return {
+    dataset_id: dataset,
+    document_id: document,
+    chunk_ids: ids,
+    available,
   };
 }
 
@@ -552,6 +599,17 @@ async function handle(req, res, url) {
       page: Number(url.searchParams.get('page') || 1),
       pageSize: Number(url.searchParams.get('page_size') || 100),
       keywords: url.searchParams.get('keywords') || '',
+    });
+    return send(res, 200, result);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/golden/ragflow/chunks/availability') {
+    const body = await safeBody(req);
+    const result = await ragflowSetChunkAvailability(loadConfig(), {
+      datasetId: stringOf(body.dataset_id),
+      documentId: stringOf(body.document_id),
+      chunkIds: body.chunk_ids,
+      available: body.available,
     });
     return send(res, 200, result);
   }
