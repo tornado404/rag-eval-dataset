@@ -113,7 +113,7 @@ test('query bundle creates one canonical root with variants and shared facts', (
   const result = createQueryBundle(state, {
     queries: [
       { text: '设备甲 是设备还是软件？', variant_type: 'paraphrase' },
-      { text: '设备甲是什么类型？', variant_type: 'colloquial' },
+      { text: '设备甲有哪些规格？', variant_type: 'colloquial' },
       { text: '设备甲符合规格吗？', variant_type: 'canonical' },
     ],
     facts: [
@@ -218,8 +218,11 @@ test('parseSuggestions accepts bare JSON and fenced JSON', () => {
 });
 
 test('parseSuggestions removes duplicates against existing queries', () => {
-  const result = parseSuggestions('{"canonical":"设备甲是什么类型？","variants":[{"text":"设备甲是什么类型？","variant_type":"colloquial"}]}', ['它是设备']);
-  assert.deepEqual(result, [{ text: '设备甲是什么类型？', variant_type: 'colloquial', rationale: '' }]);
+  const result = parseSuggestions(
+    '{"canonical":"设备甲是什么类型？","variants":[{"text":"设备甲 算不算设备？","variant_type":"colloquial"},{"text":"设备甲算不算设备？","variant_type":"follow_up"}]}',
+    ['设备甲是什么类型？'],
+  );
+  assert.deepEqual(result, [{ text: '设备甲 算不算设备？', variant_type: 'colloquial', rationale: '' }]);
 });
 
 test('evidence draft polish keeps filled fields and fills only empty fields', () => {
@@ -279,37 +282,39 @@ test('evidenceInventory counts m:n links and unlinked rows', () => {
 
 test('autoMatchQuery ranks deterministically, filters, and does not mutate state', () => {
   const state = fixture();
-  state.facts.push({ fact_id: 'F002', statement: '设备支持 USB-C 设备甲。', topic: '功能与限制', source_note: '设备甲 产品文档', fact_type: 'general', importance: 'P0', status: 'draft' });
+  state.queries[0].text = 'What kind of product is Alpha01?';
+  state.facts[0].statement = 'Alpha01 is a wireless accessory.';
+  state.facts.push({ fact_id: 'F002', statement: 'Beta02 supports USB-C Alpha01.', topic: 'connectivity', source_note: 'Alpha01 product documentation', fact_type: 'general', importance: 'P0', status: 'draft' });
   state.query_facts.push(
     { query_id: 'Q0001', fact_id: 'F001', requirement: 'required' },
     { query_id: 'Q0001', fact_id: 'F002', requirement: 'required' },
   );
   state.evidences.push(
-    { evidence_id: 'E001', title: '产品定位证据', excerpt: '设备甲 是设备。', status: 'draft' },
-    { evidence_id: 'E002', title: '规格证据', excerpt: '设备支持 USB-C。', status: 'draft' },
+    { evidence_id: 'E001', title: 'Alpha01 product evidence', excerpt: 'Alpha01 is a wireless accessory.', status: 'draft' },
+    { evidence_id: 'E002', title: 'Beta02 connection evidence', excerpt: 'Beta02 supports USB-C.', status: 'draft' },
   );
   state.fact_evidence.push(
     { fact_id: 'F001', evidence_ids: ['E001'], operator: 'OR' },
     { fact_id: 'F002', evidence_ids: ['E002'], operator: 'OR' },
   );
   state.chunks.push(
-    { chunk_id: 'ck-b', content: '设备甲 是设备。', source: 'ragflow' },
-    { chunk_id: 'ck-a', content: '设备支持 USB-C 设备甲。', source: 'ragflow' },
-    { chunk_id: 'ck-c', content: '与设备甲无关的储存条件。', source: 'ragflow' },
+    { chunk_id: 'ck-b', content: 'Alpha01 is a wireless accessory.', source: 'ragflow' },
+    { chunk_id: 'ck-a', content: 'Beta02 supports USB-C Alpha01.', source: 'ragflow' },
+    { chunk_id: 'ck-c', content: 'Maintenance schedule for Gamma09.', source: 'ragflow' },
   );
   state.evidence_chunks.push({ evidence_id: 'E001', chunk_ids: ['ck-b'] });
 
   const before = JSON.stringify(state);
   const candidates = [
-    { chunk_id: 'ck-a', content: '设备支持 USB-C 设备甲。', similarity: 0.4 },
-    { chunk_id: 'ck-z', content: '设备甲 是设备。', similarity: 0.8 },
-    { chunk_id: 'ck-b', content: '设备甲 是设备。', similarity: 0.8 },
-    { chunk_id: 'ck-c', content: '与设备甲无关的储存条件。', similarity: 0.2 },
+    { chunk_id: 'ck-a', content: 'Beta02 supports USB-C Alpha01.', similarity: 0.4 },
+    { chunk_id: 'ck-z', content: 'Alpha01 is a wireless accessory.', similarity: 0.8 },
+    { chunk_id: 'ck-b', content: 'Alpha01 is a wireless accessory.', similarity: 0.8 },
+    { chunk_id: 'ck-c', content: 'Maintenance schedule for Gamma09.', similarity: 0.2 },
   ];
   const result = autoMatchQuery(state, 'Q0001', candidates, { topK: 2, minSimilarity: 0.5 });
 
   assert.deepEqual(result.fact_ids, ['F001', 'F002']);
-  assert.equal(result.query_text, '设备甲是什么类型？');
+  assert.equal(result.query_text, 'What kind of product is Alpha01?');
   assert.deepEqual(result.candidates.map((row) => row.chunk_id), ['ck-b', 'ck-z']);
   assert.deepEqual(result.candidates[0].matched_fact_ids, ['F001', 'F002']);
   assert.deepEqual(result.candidates[0].matched_evidence_ids, ['E001']);
@@ -319,8 +324,8 @@ test('autoMatchQuery ranks deterministically, filters, and does not mutate state
   assert.equal(JSON.stringify(state), before);
 
   const lexical = autoMatchQuery(state, 'Q0001', [
-    { chunk_id: 'ck-a', content: '设备支持 USB-C 设备甲。' },
-    { chunk_id: 'ck-c', content: '与设备甲无关的储存条件。' },
+    { chunk_id: 'ck-a', content: 'Beta02 supports USB-C Alpha01.' },
+    { chunk_id: 'ck-c', content: 'Maintenance schedule for Gamma09.' },
   ], { minSimilarity: 0.6 });
   assert.deepEqual(lexical.candidates.map((row) => row.chunk_id), ['ck-a']);
   assert.equal(lexical.candidates[0].similarity, 1);
