@@ -1262,11 +1262,11 @@ export function summarizeAiQaRecords(records) {
 export { aggregateDecisionAttribution, compareReports, scoreDecisionMetrics, scoreRecallMetrics };
 
 export const AI_QA_METRIC_NOTES = {
-  final_grounding: '[REDACTED][REDACTED][REDACTED]',
-  ragflow_candidates_at_12: '[REDACTED]',
-  ai_qa: '真实调用 POST [REDACTED]（deliver=auto），包含 Decision 路由、Query 改写门禁与最终回答装配；[REDACTED]',
-  observation: '[REDACTED][REDACTED][REDACTED]',
-  decision: '严格误拒与广义非作答拒止的分母相同（预期作答且可评分的 case），但动作集合不同：严格口径只统计 refuse_domain、[REDACTED]、[REDACTED]，广义口径还包含 escalate_human、clarify、other。[REDACTED]',
+  final_grounding: '最终证据池 Recall@K（Gold-covered corpus）：分母只包含可映射的 Gold facts，不代表全部线上语料；只使用 turn_observation 中的真实 chunk ID（v2 的 final_grounding[].chunk_id 或兼容字段 final_grounding_chunks），K 逐题取最终 chunk 数，汇总仅给 K 范围；Gold 按 required facts 的 OR/AND 证据组判定。',
+  ragflow_candidates_at_12: 'RAGFlow 原始候选 Recall@12 / Hit@12：取 merge 之前的专业库 Top-12 chunk ID（v2 的 ragflow_candidates_at_12[].chunk_id 或兼容字段 ragflow_candidate_chunk_ids_at_12），与最终证据池口径不同。',
+  ai_qa: '真实调用 POST /api/v1/qa/turns（deliver=auto），包含 Decision 路由、Query 改写门禁与最终回答装配；单轮题通常 rewrite.called=false、fallback_reason=gate_skip。',
+  observation: '分数只来自后端 qa: turn_observation 日志；not_retrieved 表示 Decision 早退未检索，empty_candidate_observed 是观测到的有效空结果，unavailable 是缺观测/旧 schema/无法解析，均不会伪装成检索 miss。缺少 chunk 级字段的题不进入 Recall/Hit 分母，不使用接口 citations 或答案文本反推。',
+  decision: '严格误拒与广义非作答拒止的分母相同（预期作答且可评分的 case），但动作集合不同：严格口径只统计 refuse_domain、compliance_block、insufficient_evidence，广义口径还包含 escalate_human、clarify、other。误答的分母是预期非作答且可评分的 case，不能与误拒率合并。',
 };
 
 async function runAiQaEvaluation(dataset, request, { signal, onProgress = () => {} } = {}) {

@@ -14,7 +14,7 @@ function fixture() {
     { query_id: 'Q_TEST_092', text: '提交后如何确认结果？', variant_type: 'canonical', status: 'review', expected_behavior: 'answer' },
   ];
   state.facts = [
-    { fact_id: 'F_TEST_001', statement: '第一个问题的事实', fact_type: '[REDACTED]', importance: 'P1', status: 'draft' },
+    { fact_id: 'F_TEST_001', statement: '第一个问题的事实', fact_type: 'product_information', importance: 'P1', status: 'draft' },
     { fact_id: 'F_TEST_027', statement: '提交成功后，页面应显示已更新状态', fact_type: 'safety', importance: 'P1', status: 'draft' },
     { fact_id: 'F_TEST_240', statement: '没有 Query 引用的事实', fact_type: 'safety', importance: 'P1', status: 'draft' },
   ];

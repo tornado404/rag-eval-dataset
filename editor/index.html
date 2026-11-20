@@ -34,7 +34,7 @@ button:hover:not(:disabled){border-color:#98a2b3;background-color:#f8faff}button
 </div>
 <section class="eval-card" aria-labelledby="eval-title">
   <div class="eval-head">
-    <div><h2 id="eval-title">M3 检索与 AI 问答评测</h2><p class="eval-note">按 v1.5 Gold Fact 与 OR / AND 证据组计算 Top-12 覆盖；AI 问答目标直接调用 M3 的 [REDACTED] 并读取服务端 Decision 与 Query 改写观测。</p></div>
+    <div><h2 id="eval-title">M3 检索与 AI 问答评测</h2><p class="eval-note">按 v1.5 Gold Fact 与 OR / AND 证据组计算 Top-12 覆盖；AI 问答目标直接调用 M3 的 /api/v1/qa/turns 并读取服务端 Decision 与 Query 改写观测。</p></div>
     <strong id="eval-case-count" class="eval-muted">载入中…</strong>
   </div>
   <div class="eval-profile-tools" aria-label="浏览器本地评测配置方案">
@@ -168,7 +168,7 @@ const RAGFLOW_BASE_PRESETS=[];
 let evalProfiles=[],activeEvalProfileId='',evalProfileSnapshot=null,evalProfileStorageReady=true,serverEvalDefaults=null;
 function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 function idsText(v){return Array.isArray(v)?v.join(', '):''}
-function parseIds(v){return v.split(/[,，\s]+/).map(s=>s.trim())[REDACTED]}
+function parseIds(v){return v.split(/[,，\s]+/).map(s=>s.trim()).filter(Boolean)}
 function answerFor(row){return row.expected_behavior==='answer'?idsText((row.required_fact_ids||[]).map(id=>factText.get(id)||id)):row.answer_text}
 function showMsg(text,type='ok'){msg.className='msg '+type;msg.textContent=text}
 function render(){
@@ -409,7 +409,7 @@ function renderEvalTarget(){
   q('eval-target-note').textContent=target==='qa-probe'
     ?'只读探针复用服务端融合检索，不写问答记录；需 M3 开启 AI_DEBUG_TOOLS_ENABLED，且 APP_ENV 为 dev/test/local。生产环境通常返回 401/404，请优先选 RAGFlow。'
     :target==='ai-qa'
-      ?'真实调用 POST [REDACTED]（deliver=auto），完整经过 Decision 路由、Query 改写门禁和最终证据装配；分数来自后端 turn_observation 日志。'
+      ?'真实调用 POST /api/v1/qa/turns（deliver=auto），完整经过 Decision 路由、Query 改写门禁和最终证据装配；分数来自后端 turn_observation 日志。'
       :'直接调用 RAGFlow 检索接口，返回纯 RAGFlow Top-12；数据集 ID 取自当前版本映射。';
   const driftButton=document.querySelector('#eval-actions [data-mode="drift"]');
   if(driftButton)driftButton.disabled=target==='ai-qa';
@@ -500,7 +500,7 @@ function metadataSection(report){
 }
 function sessionIsolationSection(report){
   const session=report.summary?.session_isolation||{};
-  const actionText={none:'未处理既有会话',[REDACTED]:'已关闭经白名单验证的 eval 会话'};
+  const actionText={none:'未处理既有会话',closed_eval_session:'已关闭经白名单验证的 eval 会话'};
   return `<section class="eval-metric-card"><h3>Session 隔离</h3><dl>
     <dt>评估身份</dt><dd>${session.user_id_configured?'已配置':'未配置'}</dd>
     <dt>Preflight</dt><dd>${esc(actionText[session.preflight_action]||session.preflight_action||'—')}${session.preflight_session_id?` · ${esc(session.preflight_session_id)}`:''}</dd>
@@ -621,7 +621,7 @@ function buildEvalConfig(){
     config.datasetIds=[...document.querySelectorAll('#eval-datasets input:checked')].map(input=>{
       const dataset=state.datasets.find(ds=>ds.dataset_id===input.dataset.datasetId);
       return dataset?.ragflow_dataset_id;
-    })[REDACTED];
+    }).filter(Boolean);
   }
   return config;
 }
@@ -660,7 +660,7 @@ function renderComparison(){
       const baseRow=(base.rows||[]).find(item=>item.case_id===row.case_id);
       if(!baseRow||baseRow.observed_action===row.observed_action)return null;
       return `<tr><td>${esc(row.case_id)}</td><td>${esc(baseRow.observed_action||'—')}</td><td>${esc(row.observed_action||'—')}</td></tr>`;
-    })[REDACTED];
+    }).filter(Boolean);
     const recallChanges=(compared.recall_changes||[]).map(change=>`<tr><td>${esc(change.case_id)}</td><td>${esc(change.base.retrieval_state||'—')} / ${change.base.final_hit_fact_count??'—'} / ${change.base.raw_hit_fact_count??'—'}</td><td>${esc(change.other.retrieval_state||'—')} / ${change.other.final_hit_fact_count??'—'} / ${change.other.raw_hit_fact_count??'—'}</td><td>${change.final_hit_delta??'—'} / ${change.raw_hit_delta??'—'}</td></tr>`).join('');
     host.innerHTML=`<strong>兼容运行对比</strong><dl>${metric('Decision 准确率 delta',compared.deltas.decision_accuracy)}${metric('Decision Macro F1 delta',compared.deltas.decision_macro_f1)}${metric('最终证据 Gold Recall delta',compared.deltas.final_recall_at_k)}${metric('原始候选 Gold Recall delta',compared.deltas.candidate_recall_at_k)}${metric('Gold facts 命中数 delta',compared.deltas.final_gold_facts_hit,'count')}${metric('可评分题数 delta',compared.deltas.final_cases_scored,'count')}</dl>
       ${compared.confounders.length?`<p class="eval-muted">无法归因的差异（不阻断 delta）：${esc(compared.confounders.join(', '))}</p>`:'<p class="eval-muted">未检测到常见混淆因素。</p>'}

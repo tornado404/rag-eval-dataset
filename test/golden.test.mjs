@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
-import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import test from 'node:test';
 import {
@@ -151,7 +151,7 @@ test('evidence chunk relation is many-to-many and recall respects operator', () 
   assert.deepEqual(state.evidence_chunks[1].chunk_ids, ['ck-b']);
   assert.equal(validateState(state).length, 0);
 
-  const miss = assessRecall(state, 'Q0001', ['[REDACTED]'], 12, 10);
+  const miss = assessRecall(state, 'Q0001', ['customer_service'], 12, 10);
   assert.equal(miss.hit_total, 0);
   assert.equal(miss.recall, 0);
   const partial = assessRecall(state, 'Q0001', ['ck-a'], 12, 10);
@@ -188,7 +188,7 @@ test('AND evidence groups require every chunk-bearing evidence to hit', () => {
 
   assert.equal(assessRecall(state, 'Q0001', ['ck-a']).hit_total, 0);
   assert.equal(assessRecall(state, 'Q0001', ['ck-b']).hit_total, 0);
-  assert.equal(assessRecall(state, 'Q0001', ['[REDACTED]']).hit_total, 0);
+  assert.equal(assessRecall(state, 'Q0001', ['customer_service']).hit_total, 0);
   assert.equal(assessRecall(state, 'Q0001', ['ck-a', 'ck-b']).hit_total, 1);
 });
 

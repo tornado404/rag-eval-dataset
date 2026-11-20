@@ -79,16 +79,16 @@ export async function saveReport(report) {
 function projectEntry(entry) {
   const { report_digest: reportDigest, ...report } = entry;
   return {
-    [REDACTED]
+    run_id: report.run_id,
     report_digest: reportDigest,
     stored_at: entry.stored_at,
     storage_schema_version: entry.storage_schema_version,
-    [REDACTED]
+    status: report.status,
     target: report.target,
     mode: report.mode,
     dataset_version: report.dataset_version,
-    [REDACTED]
-    [REDACTED]
+    started_at: report.started_at,
+    finished_at: report.finished_at,
     cases_total: report.cases_total,
     warning_count: Array.isArray(report.warnings) ? report.warnings.length : 0,
     run: report.run,
