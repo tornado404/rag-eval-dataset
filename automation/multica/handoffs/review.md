@@ -1,0 +1,1 @@
+Run RAGED-Reviewer in a separate session from the Developer. Review the actual PR diff and acceptance criteria. Record blocking, major, and minor findings and review_pass. Move to QA when review_pass is true. Move back to Development at most two times, then move to blocked for repeated failures.

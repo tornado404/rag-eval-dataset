@@ -1,0 +1,1 @@
+Run RAGED-Developer. Work only in an isolated worktree and ai/<MULTICA_KEY>-<slug> branch. Write a regression test first, run npm run check and git diff --check, then open a Draft PR with the Multica key in the title and Related GitHub issue: #N in the body. Move to Review only after the PR URL and test evidence are recorded. Never push main, rewrite history, deploy, or merge.

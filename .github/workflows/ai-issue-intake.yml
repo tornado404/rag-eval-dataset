@@ -1,0 +1,34 @@
+name: ai issue intake
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions: {}
+
+concurrency:
+  group: raged-ai-issue-intake
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Forward authorized issue metadata
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          MULTICA_WEBHOOK_URL: ${{ secrets.MULTICA_WEBHOOK_URL }}
+          AI_AUTHOR_IDS: ${{ vars.AI_AUTHOR_IDS }}
+          AI_APPROVER_IDS: ${{ vars.AI_APPROVER_IDS }}
+        run: node scripts/automation/issue-intake.mjs

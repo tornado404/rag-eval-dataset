@@ -1,0 +1,1 @@
+Run RAGED-Planner. Produce a bounded plan with acceptance tests, exact files, rollback, risk, and private-data dependencies. Move to Development after the plan is recorded. Any protected workflow, deploy, credential, schema, or license change goes to blocked for human review.
