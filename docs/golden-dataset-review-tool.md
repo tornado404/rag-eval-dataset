@@ -124,6 +124,8 @@ Chunk 卡片上的 `禁用` / `启用` 会调用 RAGFlow `PATCH /api/v1/datasets
 
 Fact 的审核状态可在 Fact 库编辑，也可在“管理 Query 的 Facts”面板中直接修改。它是 Fact 的全局状态，会影响所有引用该 Fact 的 Query；试跑中的“命中 / 未命中”只表示本次召回结果。
 
+召回试跑的宽窗顶部可切换当前 Query 的 Fact，下面并排比较预期与实际结果。左栏展示所选 Fact 关联的 Evidence，以及每个 Gold Chunk 的标题和完整本地快照原文；快照缺失时显示“无本地快照”。右栏展示 RAGFlow 本轮 Top-K 的完整 Chunk 原文。`matched` 标记只针对当前选中的 Fact：某个实际结果出现在该 Fact 的 `matched_chunk_ids` 中时才会显示，用于对照预期 Chunk 与本次真实召回。切换 Fact 不会重新检索，也不会改变评分。
+
 ## 接口
 
 所有写操作在一次 `read → mutate → validate → write changed files` 事务内完成；只要校验失败就不落盘。
