@@ -380,7 +380,7 @@ export function chunkIdsOfFact(state, factId) {
   return unique(evidenceIdsOfFact(state, factId).flatMap((evidenceId) => chunkIdsOfEvidence(state, evidenceId)));
 }
 
-export function assessRecall(state, queryId, retrievedChunkIds, topK = 12, latencyMs = null) {
+export function assessRecall(state, queryId, retrievedChunkIds, topK = 12, latencyMs = null, mappingContext = null) {
   if (!state.queries.some((row) => row.query_id === queryId)) throw new GoldenError(`query ${queryId} not found`, 404);
   const retrieved = new Set(retrievedChunkIds);
   const scoredLinks = queryFactsOf(state, queryId).filter((row) => ['required', 'required_any'].includes(row.requirement));
@@ -392,11 +392,24 @@ export function assessRecall(state, queryId, retrievedChunkIds, topK = 12, laten
     const operator = oneOf(relation?.operator, OPERATORS, 'OR');
     const evidenceIds = evidenceIdsOfFact(state, factId);
     const perEvidence = evidenceIds.map((evidenceId) => {
-      const chunkIds = chunkIdsOfEvidence(state, evidenceId);
+      const mapping = mappingContext?.byEvidence?.[evidenceId] || null;
+      const chunkIds = mappingContext
+        ? mapping?.review_status === 'approved' ? [...(mapping.chunk_ids || [])] : []
+        : chunkIdsOfEvidence(state, evidenceId);
       const matched = chunkIds.filter((chunkId) => retrieved.has(chunkId));
-      return { evidence_id: evidenceId, chunk_ids: chunkIds, hit: matched.length > 0, matched_chunk_ids: matched };
+      return {
+        evidence_id: evidenceId,
+        excerpt: mapping?.excerpt || state.evidences.find((row) => row.evidence_id === evidenceId)?.excerpt || '',
+        mapping_review_status: mappingContext ? mapping?.review_status || 'pending' : '',
+        chunk_ids: chunkIds,
+        hit: matched.length > 0,
+        matched_chunk_ids: matched,
+      };
     });
     const chunkBearing = perEvidence.filter((item) => item.chunk_ids.length > 0);
+    const mappingIncomplete = Boolean(mappingContext && evidenceIds.length && (operator === 'AND'
+      ? perEvidence.some((item) => item.mapping_review_status !== 'approved')
+      : perEvidence.every((item) => item.mapping_review_status !== 'approved')));
     const factHit = operator === 'AND'
       ? chunkBearing.length > 0 && chunkBearing.every((item) => item.hit)
       : chunkBearing.some((item) => item.hit);
@@ -410,7 +423,7 @@ export function assessRecall(state, queryId, retrievedChunkIds, topK = 12, laten
       evidence_ids: evidenceIds,
       chunk_ids: unique(perEvidence.flatMap((item) => item.chunk_ids)),
       matched_chunk_ids: unique(perEvidence.flatMap((item) => item.matched_chunk_ids)),
-      scorable: chunkBearing.length > 0,
+      scorable: chunkBearing.length > 0 && !mappingIncomplete,
       hit: factHit,
       evidence: perEvidence,
     };
@@ -456,6 +469,7 @@ export function assessRecall(state, queryId, retrievedChunkIds, topK = 12, laten
     + alternativeGroups.filter((group) => group.hit_total > 0).length;
   return {
     query_id: queryId,
+    evidence_mapping_experiment_version: mappingContext?.experiment_version || '',
     top_k: topK,
     latency_ms: latencyMs,
     required_total: requiredTotal,
