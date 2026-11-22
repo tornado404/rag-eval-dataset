@@ -13,10 +13,35 @@ DEPLOY_SHA="${INPUT_SHA:-$SOURCE_SHA}"
 APP_DIR="$HOME/apps/rag-eval-dataset"
 DATA_DIR="$HOME/apps/rag-eval-data"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
-LABEL="${LAUNCHD_LABEL:-org.rag-eval-dataset}"
+if [[ -z "$NODE_BIN" ]]; then
+  RUNNER_ROOT=""
+  if [[ -n "${RUNNER_TEMP:-}" && "$RUNNER_TEMP" == */_work/_temp ]]; then
+    RUNNER_ROOT="${RUNNER_TEMP%/_work/_temp}"
+  elif [[ "$SOURCE_DIR" == */_work/* ]]; then
+    RUNNER_ROOT="${SOURCE_DIR%%/_work/*}"
+  fi
+  if [[ -n "$RUNNER_ROOT" ]]; then
+    for candidate in "$RUNNER_ROOT"/externals.*/node*/bin/node; do
+      if [[ -x "$candidate" ]]; then
+        NODE_BIN="$candidate"
+        break
+      fi
+    done
+  fi
+  if [[ -z "$NODE_BIN" ]]; then
+    for candidate in "$HOME"/actions-runner-*/externals.*/node*/bin/node; do
+      if [[ -x "$candidate" ]]; then
+        NODE_BIN="$candidate"
+        break
+      fi
+    done
+  fi
+fi
+LABEL="${LAUNCHD_LABEL:-com.tornado404.rag-eval-dataset}"
 PLIST="${PLIST_PATH:-$HOME/Library/LaunchAgents/$LABEL.plist}"
 PORT="${PORT:-4183}"
 GOLDEN_PORT="${GOLDEN_PORT:-$PORT}"
+BIND_ADDRESS="${BIND_ADDRESS:-0.0.0.0}"
 CONFIG_DIR="$HOME/.config/rag-eval-dataset"
 EVAL_CONFIG="$CONFIG_DIR/eval.env"
 GOLDEN_CONFIG="$CONFIG_DIR/golden.env"
@@ -90,7 +115,7 @@ cat > "$PLIST" <<PLISTEOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>GOLDEN_PORT</key><string>$GOLDEN_PORT</string>
-    <key>BIND_ADDRESS</key><string>127.0.0.1</string>
+    <key>BIND_ADDRESS</key><string>$BIND_ADDRESS</string>
     <key>GOLDEN_DATA_DIR</key><string>$DATA_DIR/golden-v1</string>
     <key>GOLDEN_CONFIG_FILE</key><string>$GOLDEN_CONFIG</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
