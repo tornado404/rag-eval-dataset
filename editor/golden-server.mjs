@@ -29,6 +29,12 @@ import {
   releaseQueryClaim,
   renewQueryClaim,
 } from '../scripts/lib/query-claims.mjs';
+import {
+  DEFAULT_EVIDENCE_MAPPING_EXPERIMENT,
+  inspectEvidenceMapping,
+  readEvidenceMappingRevisions,
+  saveEvidenceMapping,
+} from '../scripts/lib/evidence-mappings.mjs';
 
 const PORT = Number(process.env.GOLDEN_PORT || 4174);
 const BIND_ADDRESS = process.env.BIND_ADDRESS || '127.0.0.1';
@@ -447,13 +453,36 @@ async function polishEvidenceDraft(config, input) {
   return parseEvidenceDraftPolish(content, { title: input.title, excerpt: input.excerpt });
 }
 
-function stateBundle() {
+function stateBundle(experimentVersion = DEFAULT_EVIDENCE_MAPPING_EXPERIMENT) {
   const state = readState(VERSION);
   const config = loadConfig();
   const claims = claimsState(VERSION).claims;
+  const evidenceMappingRevisions = readEvidenceMappingRevisions(VERSION);
+  const experimentVersions = [...new Set([
+    DEFAULT_EVIDENCE_MAPPING_EXPERIMENT,
+    ...evidenceMappingRevisions.map((row) => row.experiment_version).filter(Boolean),
+  ])].sort();
+  if (!experimentVersions.includes(experimentVersion)) experimentVersions.push(experimentVersion);
+  const evidenceMappingStatusByVersion = Object.fromEntries(experimentVersions.map((version) => [
+    version,
+    Object.fromEntries(state.evidences.map((row) => [
+      row.evidence_id,
+      inspectEvidenceMapping(state, evidenceMappingRevisions, row.evidence_id, version),
+    ])),
+  ]));
+  const currentMappingById = new Map();
+  for (const row of evidenceMappingRevisions) {
+    const key = `${row.experiment_version}\u0000${row.evidence_id}`;
+    const current = currentMappingById.get(key);
+    if (!current || Number(row.revision || 0) > Number(current.revision || 0)) currentMappingById.set(key, row);
+  }
+  const currentEvidenceMappings = [...currentMappingById.values()];
   return {
     ...state,
     query_claims: claims.map(({ active, ...claim }) => ({ ...claim, active })),
+    evidence_mapping_revisions: currentEvidenceMappings,
+    evidence_mapping_experiment_versions: experimentVersions,
+    evidence_mapping_status_by_version: evidenceMappingStatusByVersion,
     config: publicConfig(config),
     taxonomy: {
       topics: [...new Set(state.facts.map((row) => row.topic).filter(Boolean))]
@@ -467,9 +496,24 @@ function stateBundle() {
   };
 }
 
+function evidenceMappingRecallContext(state, experimentVersion) {
+  const revisions = readEvidenceMappingRevisions(VERSION);
+  if (!revisions.length) return null;
+  const byEvidence = Object.fromEntries(state.evidences.map((row) => [
+    row.evidence_id,
+    inspectEvidenceMapping(state, revisions, row.evidence_id, experimentVersion),
+  ]));
+  const statusCounts = { approved: 0, pending: 0, rejected: 0, stale: 0 };
+  for (const mapping of Object.values(byEvidence)) {
+    const status = statusCounts[mapping.review_status] === undefined ? 'pending' : mapping.review_status;
+    statusCounts[status] += 1;
+  }
+  return { experiment_version: experimentVersion, byEvidence, status_counts: statusCounts };
+}
+
 async function handle(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/golden/state') {
-    return send(res, 200, stateBundle());
+    return send(res, 200, stateBundle(url.searchParams.get('experiment_version') || DEFAULT_EVIDENCE_MAPPING_EXPERIMENT));
   }
 
   if (req.method === 'GET' && url.pathname === '/api/golden/evidence/inventory') {
@@ -493,6 +537,13 @@ async function handle(req, res, url) {
     const body = await safeBody(req);
     const result = releaseQueryClaim(VERSION, body);
     return send(res, 200, { ...result, state: stateBundle() });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/golden/evidence-mappings/save') {
+    const body = await safeBody(req);
+    const result = saveEvidenceMapping(VERSION, body);
+    const experimentVersion = body.experiment_version || DEFAULT_EVIDENCE_MAPPING_EXPERIMENT;
+    return send(res, 200, { ...result, state: stateBundle(experimentVersion) });
   }
 
   if (req.method === 'POST' && url.pathname.startsWith('/api/golden/entities/')) {
@@ -658,8 +709,24 @@ async function handle(req, res, url) {
       datasetIds: body.dataset_ids,
       topK: body.top_k,
     });
-    const report = assessRecall(state, query.query_id, retrieval.chunks.map((chunk) => chunk.chunk_id), retrieval.top_k, retrieval.latency_ms);
-    return send(res, 200, { query_id: query.query_id, retrieval, report });
+    const experimentVersion = stringOf(body.experiment_version) || DEFAULT_EVIDENCE_MAPPING_EXPERIMENT;
+    const mappingContext = evidenceMappingRecallContext(state, experimentVersion);
+    const report = assessRecall(
+      state,
+      query.query_id,
+      retrieval.chunks.map((chunk) => chunk.chunk_id),
+      retrieval.top_k,
+      retrieval.latency_ms,
+      mappingContext,
+    );
+    return send(res, 200, {
+      query_id: query.query_id,
+      retrieval,
+      report,
+      mapping_review: mappingContext
+        ? { enabled: true, experiment_version: experimentVersion, status_counts: mappingContext.status_counts }
+        : { enabled: false, experiment_version: experimentVersion, status_counts: null },
+    });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/golden/evidence/auto-match') {

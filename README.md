@@ -40,6 +40,8 @@ Start the Golden review tool:
 DATASET_ROOT=/private/eval-data npm run golden
 ```
 
+Evidence–Chunk mappings keep exact source anchors, experiment versions, and a review status separate from the Evidence status. See [the mapping review guide](docs/evidence-chunk-mappings.md) for the schema, approval behavior, and private snapshot preparation command.
+
 The editor binds to `127.0.0.1` by default. Set `PORT` and `BIND_ADDRESS` when your local setup requires different values. The review tools do not bundle or download private data.
 
 ## Configuration

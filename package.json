@@ -6,6 +6,7 @@
   "scripts": {
     "editor": "node editor/server.mjs",
     "golden": "node editor/golden-server.mjs",
+    "evidence:mapping-review": "node scripts/prepare-evidence-mapping-review.mjs",
     "governance": "node scripts/golden-governance.mjs",
     "gate:p0-p1": "node scripts/golden-governance.mjs gate p0-p1 --split split-golden-v1-v1 --seed 42 --validation-ratio 0.2",
     "lint": "node scripts/lint.mjs",

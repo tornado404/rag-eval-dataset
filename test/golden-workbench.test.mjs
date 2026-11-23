@@ -64,6 +64,15 @@ async function openApp(hash, serverState = fixture(), options = {}) {
     ApiError: class extends Error {},
     async getState() { return structuredClone(serverState); },
     async getEvidenceInventory() { return { inventory: evidenceInventory(serverState) }; },
+    async saveEvidenceMapping(body) {
+      calls.push({ type: 'evidence-mapping', body: structuredClone(body) });
+      const revision = { ...structuredClone(body), revision: 1, source_anchor: { continuity_confirmed: body.continuity_confirmed } };
+      serverState.evidence_mapping_revisions = [revision];
+      serverState.evidence_mapping_status_by_version = { [body.experiment_version]: {
+        [body.evidence_id]: { ...revision, anchor_status: 'anchored' },
+      } };
+      return { revision, state: structuredClone(serverState) };
+    },
     async linkEvidenceChunks(evidenceId, chunkIds, chunks = []) {
       calls.push({ type: 'evidence-chunks', evidenceId, chunkIds: [...chunkIds] });
       if (options.rejectEvidenceChunks) throw new Error('Evidence Chunk save failed');
@@ -447,6 +456,23 @@ test('Evidence relationships open without a Query and prioritize missing sources
   assert.match(app.html, /data-workspace-chunk="C_TEST_001"/);
   assert.match(app.html, /第一段完整原文。/);
   assert.deepEqual(app.calls, []);
+});
+
+test('Evidence workbench saves and approves the selected source mapping', async () => {
+  const app = await openApp('#evidence', evidenceFixture());
+  await app.click('select-workspace-item', { id: 'E_TEST_001' });
+  await app.click('toggle-mapping-source', { id: 'C_TEST_002' });
+  await app.input('mapping-excerpt', '第一段完整原文。');
+  await app.input('mapping-reviewer', 'Reviewer');
+  await app.click('save-evidence-mapping');
+  await app.click('approve-evidence-mapping');
+
+  assert.deepEqual(app.calls.map((call) => call.body.review_status), ['pending', 'approved']);
+  assert.deepEqual(app.calls[1].body.chunk_ids, ['C_TEST_001']);
+  assert.equal(app.calls[1].body.excerpt, '第一段完整原文。');
+  assert.equal(app.calls[1].body.experiment_version, 'source-anchor-v1');
+  assert.match(app.html, /映射已通过/);
+  assert.equal(app.serverState.evidences.find((row) => row.evidence_id === 'E_TEST_001').status, 'draft');
 });
 
 test('Evidence queue saves an item status using the supported status values', async () => {

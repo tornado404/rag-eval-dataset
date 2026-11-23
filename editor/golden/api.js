@@ -37,8 +37,11 @@ function post(path, body) {
   return request(path, { method: 'POST', body });
 }
 
-export function getState() {
-  return request('/api/golden/state');
+export function getState(experimentVersion = '') {
+  const query = experimentVersion
+    ? `?experiment_version=${encodeURIComponent(experimentVersion)}`
+    : '';
+  return request(`/api/golden/state${query}`);
 }
 
 export function getEvidenceInventory() {
@@ -97,6 +100,10 @@ export function linkEvidenceChunks(evidenceId, chunkIds, chunks = []) {
     chunk_ids: chunkIds,
     chunks,
   });
+}
+
+export function saveEvidenceMapping(body) {
+  return post('/api/golden/evidence-mappings/save', body);
 }
 
 export function createEvidence(body) {
